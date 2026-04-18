@@ -600,6 +600,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   }
 
   function handleOptionsMenuAction(event: string) {
+    if (event.startsWith("options:fast-mode:") && currentModelSelection.provider === "opencode") {
+      return;
+    }
     const providerOptions = applyProviderOptionMenuEvent(providerOptionDescriptors, event);
     if (providerOptions) {
       props.onUpdateModelSelection({
