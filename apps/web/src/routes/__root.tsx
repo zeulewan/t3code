@@ -30,6 +30,7 @@ import {
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { readLocalApi } from "../localApi";
 import { useSettings } from "../hooks/useSettings";
+import { useApplyUiScale } from "../hooks/useUiScale";
 import {
   deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKeyFromPath,
@@ -101,8 +102,11 @@ export const Route = createRootRouteWithContext<{
 
 function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
+  const uiScale = useSettings((settings) => settings.uiScale);
   const { authGateState } = Route.useRouteContext();
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
+
+  useApplyUiScale(uiScale);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
