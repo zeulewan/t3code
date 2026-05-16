@@ -98,6 +98,23 @@
   }
 }
 
+@media (pointer: coarse) {
+  html,
+  body,
+  #root {
+    touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  input,
+  textarea,
+  select,
+  [contenteditable="true"],
+  [role="textbox"] {
+    font-size: 16px !important;
+  }
+}
+
 /* Safe-area inset utilities for surfaces that opt into edge-to-edge rendering.
    Insets resolve to 0 when the browser already constrains the layout viewport
    to the safe area. */
