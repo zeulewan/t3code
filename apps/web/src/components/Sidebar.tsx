@@ -107,6 +107,7 @@ import { readLocalApi } from "../localApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useDesktopUpdateState } from "../state/desktopUpdate";
+import { useLongPressContextMenu } from "../hooks/useLongPressContextMenu";
 
 import { useThreadActions } from "../hooks/useThreadActions";
 import { projectEnvironment } from "../state/projects";
@@ -511,18 +512,12 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
     },
     [navigateToThread, threadRef],
   );
-  const handleRowContextMenu = useCallback(
-    (event: React.MouseEvent) => {
-      event.preventDefault();
+  const openRowContextMenu = useCallback(
+    (position: { x: number; y: number }) => {
       const hasSelection = useThreadSelectionStore.getState().hasSelection();
       if (hasSelection && isSelected) {
         void (async () => {
-          const result = await settlePromise(() =>
-            handleMultiSelectContextMenu({
-              x: event.clientX,
-              y: event.clientY,
-            }),
-          );
+          const result = await settlePromise(() => handleMultiSelectContextMenu(position));
           if (result._tag === "Failure") {
             const error = squashAtomCommandFailure(result);
             toastManager.add(
@@ -541,12 +536,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         clearSelection();
       }
       void (async () => {
-        const result = await settlePromise(() =>
-          handleThreadContextMenu(threadRef, {
-            x: event.clientX,
-            y: event.clientY,
-          }),
-        );
+        const result = await settlePromise(() => handleThreadContextMenu(threadRef, position));
         if (result._tag === "Failure") {
           const error = squashAtomCommandFailure(result);
           toastManager.add(
@@ -561,6 +551,19 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
     },
     [clearSelection, handleMultiSelectContextMenu, handleThreadContextMenu, isSelected, threadRef],
   );
+  const handleRowContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault();
+      openRowContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+      });
+    },
+    [openRowContextMenu],
+  );
+  const threadLongPressMenuHandlers = useLongPressContextMenu<HTMLAnchorElement>({
+    onLongPress: openRowContextMenu,
+  });
   const handlePrClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       if (!prStatus) return;
@@ -676,6 +679,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         onDoubleClick={handleRowDoubleClick}
         onKeyDown={handleRowKeyDown}
         onContextMenu={handleRowContextMenu}
+        {...threadLongPressMenuHandlers}
       >
         <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
           {prStatus && (
@@ -1573,9 +1577,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     [memberThreadCountByPhysicalKey, removeProject],
   );
 
-  const handleProjectButtonContextMenu = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      event.preventDefault();
+  const openProjectContextMenu = useCallback(
+    (position: { x: number; y: number }) => {
       suppressProjectClickForContextMenuRef.current = true;
       void (async () => {
         const api = readLocalApi();
@@ -1657,10 +1660,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               destructive: true,
             }),
           ],
-          {
-            x: event.clientX,
-            y: event.clientY,
-          },
+          position,
         );
 
         if (!clicked) {
@@ -1680,6 +1680,20 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       suppressProjectClickForContextMenuRef,
     ],
   );
+  const handleProjectButtonContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      openProjectContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+      });
+    },
+    [openProjectContextMenu],
+  );
+  const projectLongPressMenuHandlers = useLongPressContextMenu<HTMLButtonElement>({
+    disabled: isManualProjectSorting,
+    onLongPress: openProjectContextMenu,
+  });
 
   const navigateToThread = useCallback(
     (threadRef: ScopedThreadRef) => {
@@ -2195,6 +2209,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           }`}
           {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
           {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.listeners : {})}
+          {...(!isManualProjectSorting ? projectLongPressMenuHandlers : {})}
           onPointerDownCapture={handleProjectButtonPointerDownCapture}
           onClick={handleProjectButtonClick}
           onKeyDown={handleProjectButtonKeyDown}

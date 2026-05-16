@@ -5,11 +5,13 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   defaultInstanceIdForDriver,
   type DesktopUpdateChannel,
+  type EnvironmentId,
   PROVIDER_DISPLAY_NAMES,
   ProviderDriverKind,
   type ProviderInstanceConfig,
   type ProviderInstanceId,
   type ScopedThreadRef,
+  type ThreadId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
@@ -37,6 +39,7 @@ import { TraitsPicker } from "../chat/TraitsPicker";
 import { isElectron } from "../../env";
 import { buildHostedChannelSelectionUrl, type HostedAppChannel } from "../../hostedPairing";
 import { useTheme } from "../../hooks/useTheme";
+import { useLongPressContextMenu } from "../../hooks/useLongPressContextMenu";
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
@@ -1420,6 +1423,69 @@ export function ProviderSettingsPanel() {
   );
 }
 
+function ArchivedThreadSettingsRow({
+  thread,
+  onContextMenu,
+  onUnarchive,
+}: {
+  thread: {
+    id: ThreadId;
+    environmentId: EnvironmentId;
+    title: string;
+    createdAt: string;
+    archivedAt?: string | null;
+  };
+  onContextMenu: (threadRef: ScopedThreadRef, position: { x: number; y: number }) => void;
+  onUnarchive: (threadRef: ScopedThreadRef) => void;
+}) {
+  const threadRef = useMemo(
+    () => scopeThreadRef(thread.environmentId, thread.id),
+    [thread.environmentId, thread.id],
+  );
+  const openContextMenu = useCallback(
+    (position: { x: number; y: number }) => {
+      onContextMenu(threadRef, position);
+    },
+    [onContextMenu, threadRef],
+  );
+  const longPressMenuHandlers = useLongPressContextMenu<HTMLDivElement>({
+    onLongPress: openContextMenu,
+  });
+
+  return (
+    <SettingsRow
+      onContextMenu={(event) => {
+        event.preventDefault();
+        openContextMenu({
+          x: event.clientX,
+          y: event.clientY,
+        });
+      }}
+      {...longPressMenuHandlers}
+      title={thread.title}
+      description={
+        <>
+          Archived {formatRelativeTimeLabel(thread.archivedAt ?? thread.createdAt)}
+          {" \u00b7 Created "}
+          {formatRelativeTimeLabel(thread.createdAt)}
+        </>
+      }
+      control={
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 shrink-0 cursor-pointer gap-1.5 px-2.5"
+          onClick={() => onUnarchive(threadRef)}
+        >
+          <ArchiveX className="size-3.5" />
+          <span>Unarchive</span>
+        </Button>
+      }
+    />
+  );
+}
+
 export function ArchivedThreadsPanel() {
   const projects = useProjects();
   const { unarchiveThread, confirmAndDeleteThread } = useThreadActions();
@@ -1531,6 +1597,22 @@ export function ArchivedThreadsPanel() {
     },
     [confirmAndDeleteThread, refreshArchivedThreads, unarchiveThread],
   );
+  const handleUnarchiveThread = useCallback(
+    (threadRef: ScopedThreadRef) => {
+      void unarchiveThread(threadRef)
+        .then(() => refreshArchivedThreads())
+        .catch((error) => {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Failed to unarchive thread",
+              description: error instanceof Error ? error.message : "An error occurred.",
+            }),
+          );
+        });
+    },
+    [refreshArchivedThreads, unarchiveThread],
+  );
 
   return (
     <SettingsPageContainer>
@@ -1566,19 +1648,13 @@ export function ArchivedThreadsPanel() {
             icon={<ProjectFavicon environmentId={project.environmentId} cwd={project.cwd} />}
           >
             {projectThreads.map((thread) => (
-              <SettingsRow
+              <ArchivedThreadSettingsRow
                 key={thread.id}
-                onContextMenu={(event) => {
-                  event.preventDefault();
+                thread={thread}
+                onContextMenu={(threadRef, position) => {
                   void (async () => {
                     const result = await settlePromise(() =>
-                      handleArchivedThreadContextMenu(
-                        scopeThreadRef(thread.environmentId, thread.id),
-                        {
-                          x: event.clientX,
-                          y: event.clientY,
-                        },
-                      ),
+                      handleArchivedThreadContextMenu(threadRef, position),
                     );
                     if (result._tag === "Failure") {
                       const error = squashAtomCommandFailure(result);
@@ -1593,47 +1669,7 @@ export function ArchivedThreadsPanel() {
                     }
                   })();
                 }}
-                title={thread.title}
-                description={
-                  <>
-                    Archived {formatRelativeTimeLabel(thread.archivedAt ?? thread.createdAt)}
-                    {" \u00b7 Created "}
-                    {formatRelativeTimeLabel(thread.createdAt)}
-                  </>
-                }
-                control={
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 shrink-0 cursor-pointer gap-1.5 px-2.5"
-                    onClick={() => {
-                      void (async () => {
-                        const result = await unarchiveThread(
-                          scopeThreadRef(thread.environmentId, thread.id),
-                        );
-                        if (result._tag === "Success") {
-                          refreshArchivedThreads();
-                          return;
-                        }
-                        if (!isAtomCommandInterrupted(result)) {
-                          const error = squashAtomCommandFailure(result);
-                          toastManager.add(
-                            stackedThreadToast({
-                              type: "error",
-                              title: "Failed to unarchive thread",
-                              description:
-                                error instanceof Error ? error.message : "An error occurred.",
-                            }),
-                          );
-                        }
-                      })();
-                    }}
-                  >
-                    <ArchiveX className="size-3.5" />
-                    <span>Unarchive</span>
-                  </Button>
-                }
+                onUnarchive={handleUnarchiveThread}
               />
             ))}
           </SettingsSection>
