@@ -67,7 +67,6 @@ import {
   useGitStackedAction,
   useSourceControlActionRunning,
   useSourceControlPublishRepositoryAction,
-  useVcsInitAction,
   useVcsPullAction,
 } from "~/lib/sourceControlActions";
 import { refreshVcsStatus, useVcsStatus } from "~/lib/vcsStatusState";
@@ -1067,7 +1066,7 @@ export default function GitActionsControl({
   );
   const changeRequestTerminology = sourceControlPresentation.terminology;
   const SourceControlIcon = sourceControlPresentation.Icon;
-  // Default to true while loading so we don't flash init controls.
+  // Default to true while loading so we don't flash repository-only controls.
   const isRepo = gitStatus?.isRepo ?? true;
   const hasPrimaryRemote = gitStatus?.hasPrimaryRemote ?? false;
   const gitStatusForActions = gitStatus;
@@ -1077,7 +1076,6 @@ export default function GitActionsControl({
   const allSelected = excludedFiles.size === 0;
   const noneSelected = selectedFiles.length === 0;
 
-  const initAction = useVcsInitAction(sourceControlScope);
   const runImmediateGitAction = useGitStackedAction(sourceControlScope);
   const pullAction = useVcsPullAction(sourceControlScope);
   const isGitActionRunning = useSourceControlActionRunning(
@@ -1602,18 +1600,7 @@ export default function GitActionsControl({
 
   return (
     <>
-      {!isRepo ? (
-        <Button
-          variant="outline"
-          size="xs"
-          disabled={initAction.isPending}
-          onClick={() => {
-            void initAction.run();
-          }}
-        >
-          {initAction.isPending ? "Initializing..." : "Initialize Git"}
-        </Button>
-      ) : (
+      {!isRepo ? null : (
         <Group aria-label="Git actions" className="shrink-0">
           {quickActionDisabledReason ? (
             <Popover>

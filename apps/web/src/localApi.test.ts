@@ -80,7 +80,6 @@ const rpcClientMock = {
     removeWorktree: vi.fn(),
     createRef: vi.fn(),
     switchRef: vi.fn(),
-    init: vi.fn(),
   },
   git: {
     runStackedAction: vi.fn(),

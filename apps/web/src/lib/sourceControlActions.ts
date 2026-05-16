@@ -260,20 +260,6 @@ function useVcsManagerAction<TArgs extends ReadonlyArray<unknown>, TResult>(inpu
   };
 }
 
-export function useVcsInitAction(scope: SourceControlActionScope) {
-  const action = useCallback(async () => {
-    if (!scope.cwd || !scope.environmentId) throw new Error("Git init is unavailable.");
-    return vcsActionManager.init(scope);
-  }, [scope]);
-
-  return useVcsManagerAction({
-    operation: "init",
-    scope,
-    unavailableMessage: "Git init is unavailable.",
-    action,
-  });
-}
-
 export function useGitStackedAction(scope: SourceControlActionScope) {
   const action = useCallback(
     async ({

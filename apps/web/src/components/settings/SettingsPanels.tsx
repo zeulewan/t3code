@@ -106,16 +106,22 @@ const TIMESTAMP_FORMAT_LABELS = {
 } as const;
 
 const UI_SCALE_OPTIONS = [
+  { value: "x-small", label: "XS" },
   { value: "small", label: "Small" },
-  { value: "default", label: "Default" },
+  { value: "medium", label: "Medium" },
   { value: "large", label: "Large" },
   { value: "x-large", label: "XL" },
-  { value: "xx-large", label: "2XL" },
-  { value: "xxx-large", label: "3XL" },
 ] as const satisfies ReadonlyArray<{ value: UiScale; label: string }>;
+type UiScaleOption = (typeof UI_SCALE_OPTIONS)[number]["value"];
 
-function isUiScale(value: string | undefined): value is UiScale {
+function isUiScaleOption(value: string | undefined): value is UiScaleOption {
   return UI_SCALE_OPTIONS.some((option) => option.value === value);
+}
+
+function normalizeUiScaleOption(value: UiScale): UiScaleOption {
+  if (value === "default" || value === "xxx-large") return "medium";
+  if (value === "xx-large") return "small";
+  return value;
 }
 
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
@@ -592,10 +598,10 @@ export function GeneralSettingsPanel() {
               className="w-full flex-wrap justify-end gap-y-1 sm:w-auto"
               variant="outline"
               size="sm"
-              value={[settings.uiScale]}
+              value={[normalizeUiScaleOption(settings.uiScale)]}
               onValueChange={(value) => {
                 const next = value[0];
-                if (isUiScale(next)) {
+                if (isUiScaleOption(next)) {
                   updateSettings({ uiScale: next });
                 }
               }}

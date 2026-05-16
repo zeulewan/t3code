@@ -125,7 +125,12 @@
 
 :root {
   color-scheme: light;
-  --app-ui-scale-font-size: 16px;
+  --app-ui-scale-x-small-font-size: 14px;
+  --app-ui-scale-small-font-size: 15px;
+  --app-ui-scale-medium-font-size: 16px;
+  --app-ui-scale-large-font-size: 18px;
+  --app-ui-scale-x-large-font-size: 20px;
+  --app-ui-scale-font-size: var(--app-ui-scale-medium-font-size);
   --radius: 0.625rem;
   --background: var(--color-white);
   --app-chrome-background: var(--background);
@@ -185,24 +190,40 @@
   }
 }
 
+:root[data-ui-scale="x-small"] {
+  --app-ui-scale-font-size: var(--app-ui-scale-x-small-font-size);
+}
+
 :root[data-ui-scale="small"] {
-  --app-ui-scale-font-size: 15px;
+  --app-ui-scale-font-size: var(--app-ui-scale-small-font-size);
+}
+
+:root[data-ui-scale="medium"],
+:root[data-ui-scale="default"],
+:root[data-ui-scale="xxx-large"] {
+  --app-ui-scale-font-size: var(--app-ui-scale-medium-font-size);
 }
 
 :root[data-ui-scale="large"] {
-  --app-ui-scale-font-size: 17px;
+  --app-ui-scale-font-size: var(--app-ui-scale-large-font-size);
 }
 
 :root[data-ui-scale="x-large"] {
-  --app-ui-scale-font-size: 18px;
+  --app-ui-scale-font-size: var(--app-ui-scale-x-large-font-size);
 }
 
 :root[data-ui-scale="xx-large"] {
-  --app-ui-scale-font-size: 20px;
+  --app-ui-scale-font-size: var(--app-ui-scale-small-font-size);
 }
 
-:root[data-ui-scale="xxx-large"] {
-  --app-ui-scale-font-size: 22px;
+@media (pointer: coarse) {
+  :root {
+    --app-ui-scale-x-small-font-size: 18px;
+    --app-ui-scale-small-font-size: 20px;
+    --app-ui-scale-medium-font-size: 22px;
+    --app-ui-scale-large-font-size: 24px;
+    --app-ui-scale-x-large-font-size: 26px;
+  }
 }
 
 body {

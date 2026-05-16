@@ -79,12 +79,6 @@ vi.mock("~/lib/sourceControlActions", () => ({
     resetError: vi.fn(),
     run: vi.fn(),
   })),
-  useVcsInitAction: vi.fn(() => ({
-    error: null,
-    isPending: false,
-    resetError: vi.fn(),
-    run: vi.fn(),
-  })),
   useVcsPullAction: vi.fn(() => ({
     error: null,
     isPending: false,

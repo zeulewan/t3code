@@ -125,7 +125,6 @@ function createMockClient() {
   const switchRefDeferred = createDeferred<VcsSwitchRefResult>();
   const createRefDeferred = createDeferred<VcsCreateRefResult>();
   const createWorktreeDeferred = createDeferred<VcsCreateWorktreeResult>();
-  const initDeferred = createDeferred<void>();
   const runChangeRequestDeferred = createDeferred<GitRunStackedActionResult>();
   let runChangeRequestProgressListener: ((event: GitActionProgressEvent) => void) | null = null;
 
@@ -135,7 +134,6 @@ function createMockClient() {
     switchRef: vi.fn(() => switchRefDeferred.promise),
     createRef: vi.fn(() => createRefDeferred.promise),
     createWorktree: vi.fn(() => createWorktreeDeferred.promise),
-    init: vi.fn(() => initDeferred.promise),
     runChangeRequest: vi.fn((_, options) => {
       runChangeRequestProgressListener = options?.onProgress ?? null;
       return runChangeRequestDeferred.promise;
@@ -149,7 +147,6 @@ function createMockClient() {
     switchRefDeferred,
     createRefDeferred,
     createWorktreeDeferred,
-    initDeferred,
     runChangeRequestDeferred,
     emitProgress(event: GitActionProgressEvent) {
       runChangeRequestProgressListener?.(event);

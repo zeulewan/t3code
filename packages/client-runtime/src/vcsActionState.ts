@@ -26,8 +26,7 @@ export type VcsActionOperation =
   | "pull"
   | "switch_ref"
   | "create_ref"
-  | "create_worktree"
-  | "init";
+  | "create_worktree";
 
 export interface VcsActionState {
   readonly isRunning: boolean;
@@ -50,7 +49,7 @@ export interface VcsActionTarget {
 
 export type VcsActionClient = Pick<
   WsRpcClient["vcs"],
-  "refreshStatus" | "pull" | "switchRef" | "createRef" | "createWorktree" | "init"
+  "refreshStatus" | "pull" | "switchRef" | "createRef" | "createWorktree"
 > & {
   readonly runChangeRequest: WsRpcClient["git"]["runStackedAction"];
 };
@@ -364,19 +363,6 @@ export function createVcsActionManager(config: VcsActionManagerConfig) {
     });
   }
 
-  async function init(
-    target: VcsActionTarget,
-    client?: VcsActionClient,
-    options?: { readonly label?: string },
-  ): Promise<Awaited<ReturnType<VcsActionClient["init"]>> | null> {
-    return runOperation(target, {
-      operation: "init",
-      label: options?.label ?? "Initializing repository",
-      client,
-      execute: (resolved) => resolved.init({ cwd: target.cwd! }),
-    });
-  }
-
   async function runChangeRequest(
     target: VcsActionTarget,
     input: Omit<GitRunStackedActionInput, "cwd" | "actionId"> & { readonly actionId?: string },
@@ -451,7 +437,6 @@ export function createVcsActionManager(config: VcsActionManagerConfig) {
     switchRef,
     createRef,
     createWorktree,
-    init,
     runChangeRequest,
     reset,
   };

@@ -207,7 +207,6 @@ function createClient() {
       removeWorktree: vi.fn(async () => undefined),
       createBranch: vi.fn(async () => undefined),
       checkout: vi.fn(async () => undefined),
-      init: vi.fn(async () => undefined),
       resolvePullRequest: vi.fn(async () => undefined),
       preparePullRequestThread: vi.fn(async () => undefined),
     },
