@@ -954,7 +954,46 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       const response = yield* HttpClient.get("/");
       assert.equal(response.status, 200);
+      assert.equal(response.headers["cache-control"], "no-cache");
       assert.include(yield* response.text, "router-static-ok");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("serves hashed static assets with immutable cache headers", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const staticDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-router-static-" });
+      yield* fileSystem.writeFileString(path.join(staticDir, "index.html"), "<html></html>");
+      yield* fileSystem.makeDirectory(path.join(staticDir, "assets"), { recursive: true });
+      yield* fileSystem.writeFileString(
+        path.join(staticDir, "assets", "index-AbCdEf12.js"),
+        "console.log('asset-ok');",
+      );
+
+      yield* buildAppUnderTest({ config: { staticDir } });
+
+      const response = yield* HttpClient.get("/assets/index-AbCdEf12.js");
+      assert.equal(response.status, 200);
+      assert.equal(response.headers["cache-control"], "public, max-age=31536000, immutable");
+      assert.include(yield* response.text, "asset-ok");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("serves fallback static index responses without long-term caching", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const staticDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-router-static-" });
+      const indexPath = path.join(staticDir, "index.html");
+      yield* fileSystem.writeFileString(indexPath, "<html>fallback-ok</html>");
+
+      yield* buildAppUnderTest({ config: { staticDir } });
+
+      const response = yield* HttpClient.get("/thread/some-client-route");
+      assert.equal(response.status, 200);
+      assert.equal(response.headers["cache-control"], "no-cache");
+      assert.include(yield* response.text, "fallback-ok");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
