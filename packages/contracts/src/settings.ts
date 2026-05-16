@@ -13,6 +13,10 @@ export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"])
 export type TimestampFormat = typeof TimestampFormat.Type;
 export const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
 
+export const UiScale = Schema.Literals(["small", "default", "large", "x-large"]);
+export type UiScale = typeof UiScale.Type;
+export const DEFAULT_UI_SCALE: UiScale = "default";
+
 export const SidebarProjectSortOrder = Schema.Literals(["updated_at", "created_at", "manual"]);
 export type SidebarProjectSortOrder = typeof SidebarProjectSortOrder.Type;
 export const DEFAULT_SIDEBAR_PROJECT_SORT_ORDER: SidebarProjectSortOrder = "updated_at";
@@ -92,6 +96,7 @@ export const ClientSettingsSchema = Schema.Struct({
   timestampFormat: TimestampFormat.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TIMESTAMP_FORMAT)),
   ),
+  uiScale: UiScale.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_UI_SCALE))),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 

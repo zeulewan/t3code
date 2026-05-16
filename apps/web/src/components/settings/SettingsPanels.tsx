@@ -14,7 +14,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime";
-import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
+import { DEFAULT_UNIFIED_SETTINGS, type UiScale } from "@t3tools/contracts/settings";
 import { createModelSelection } from "@t3tools/shared/model";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
@@ -56,6 +56,7 @@ import { DraftInput } from "../ui/draft-input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
+import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 import {
@@ -101,6 +102,13 @@ const TIMESTAMP_FORMAT_LABELS = {
   "12-hour": "12-hour",
   "24-hour": "24-hour",
 } as const;
+
+const UI_SCALE_OPTIONS = [
+  { value: "small", label: "Small" },
+  { value: "default", label: "Default" },
+  { value: "large", label: "Large" },
+  { value: "x-large", label: "XL" },
+] as const satisfies ReadonlyArray<{ value: UiScale; label: string }>;
 
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
 
@@ -396,6 +404,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.timestampFormat !== DEFAULT_UNIFIED_SETTINGS.timestampFormat
         ? ["Time format"]
         : []),
+      ...(settings.uiScale !== DEFAULT_UNIFIED_SETTINGS.uiScale ? ["UI scale"] : []),
       ...(settings.sidebarThreadPreviewCount !== DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount
         ? ["Visible threads"]
         : []),
@@ -442,6 +451,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.enableAssistantStreaming,
       settings.sidebarThreadPreviewCount,
       settings.timestampFormat,
+      settings.uiScale,
       theme,
     ],
   );
@@ -459,6 +469,7 @@ export function useSettingsRestore(onRestored?: () => void) {
     setTheme("system");
     updateSettings({
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
+      uiScale: DEFAULT_UNIFIED_SETTINGS.uiScale,
       diffWordWrap: DEFAULT_UNIFIED_SETTINGS.diffWordWrap,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
@@ -550,6 +561,53 @@ export function GeneralSettingsPanel() {
                 ))}
               </SelectPopup>
             </Select>
+          }
+        />
+
+        <SettingsRow
+          title="UI scale"
+          description="Adjust text and spacing across the app on this device."
+          resetAction={
+            settings.uiScale !== DEFAULT_UNIFIED_SETTINGS.uiScale ? (
+              <SettingResetButton
+                label="UI scale"
+                onClick={() =>
+                  updateSettings({
+                    uiScale: DEFAULT_UNIFIED_SETTINGS.uiScale,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <ToggleGroup
+              className="w-full sm:w-auto"
+              variant="outline"
+              size="sm"
+              value={[settings.uiScale]}
+              onValueChange={(value) => {
+                const next = value[0];
+                if (
+                  next === "small" ||
+                  next === "default" ||
+                  next === "large" ||
+                  next === "x-large"
+                ) {
+                  updateSettings({ uiScale: next });
+                }
+              }}
+            >
+              {UI_SCALE_OPTIONS.map((option) => (
+                <ToggleGroupItem
+                  key={option.value}
+                  className="flex-1 px-2 sm:flex-none"
+                  aria-label={`Set UI scale to ${option.label}`}
+                  value={option.value}
+                >
+                  {option.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
           }
         />
 
