@@ -18,7 +18,6 @@ import {
   VcsCreateRefResult,
   VcsCreateWorktreeInput,
   VcsCreateWorktreeResult,
-  VcsInitInput,
   VcsListRefsInput,
   VcsListRefsResult,
   GitManagerServiceError,
@@ -97,7 +96,6 @@ import {
   SourceControlRepositoryInfo,
   SourceControlRepositoryLookupInput,
 } from "./sourceControl.ts";
-import { VcsError } from "./vcs.ts";
 
 export const WS_METHODS = {
   // Project registry methods
@@ -121,7 +119,6 @@ export const WS_METHODS = {
   vcsRemoveWorktree: "vcs.removeWorktree",
   vcsCreateRef: "vcs.createRef",
   vcsSwitchRef: "vcs.switchRef",
-  vcsInit: "vcs.init",
 
   // Git workflow methods
   gitRunStackedAction: "git.runStackedAction",
@@ -354,11 +351,6 @@ export const WsVcsSwitchRefRpc = Rpc.make(WS_METHODS.vcsSwitchRef, {
   error: GitCommandError,
 });
 
-export const WsVcsInitRpc = Rpc.make(WS_METHODS.vcsInit, {
-  payload: VcsInitInput,
-  error: VcsError,
-});
-
 export const WsTerminalOpenRpc = Rpc.make(WS_METHODS.terminalOpen, {
   payload: TerminalOpenInput,
   success: TerminalSessionSnapshot,
@@ -503,7 +495,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsRemoveWorktreeRpc,
   WsVcsCreateRefRpc,
   WsVcsSwitchRefRpc,
-  WsVcsInitRpc,
   WsTerminalOpenRpc,
   WsTerminalWriteRpc,
   WsTerminalResizeRpc,

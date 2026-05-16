@@ -98,7 +98,6 @@ vi.mock("~/editorPreferences", () => ({
 }));
 
 vi.mock("~/lib/gitReactQuery", () => ({
-  gitInitMutationOptions: vi.fn(() => ({ __kind: "init" })),
   gitMutationKeys: {
     publishRepository: vi.fn(() => ["publish-repository"]),
     pull: vi.fn(() => ["pull"]),

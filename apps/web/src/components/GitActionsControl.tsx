@@ -65,7 +65,6 @@ import { stackedThreadToast, toastManager, type ThreadToastData } from "~/compon
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { openInPreferredEditor } from "~/editorPreferences";
 import {
-  gitInitMutationOptions,
   gitMutationKeys,
   gitPullMutationOptions,
   gitRunStackedActionMutationOptions,
@@ -1064,7 +1063,7 @@ export default function GitActionsControl({
   );
   const changeRequestTerminology = sourceControlPresentation.terminology;
   const SourceControlIcon = sourceControlPresentation.Icon;
-  // Default to true while loading so we don't flash init controls.
+  // Default to true while loading so we don't flash repository-only controls.
   const isRepo = gitStatus?.isRepo ?? true;
   const hasPrimaryRemote = gitStatus?.hasPrimaryRemote ?? false;
   const gitStatusForActions = gitStatus;
@@ -1073,10 +1072,6 @@ export default function GitActionsControl({
   const selectedFiles = allFiles.filter((f) => !excludedFiles.has(f.path));
   const allSelected = excludedFiles.size === 0;
   const noneSelected = selectedFiles.length === 0;
-
-  const initMutation = useMutation(
-    gitInitMutationOptions({ environmentId: activeEnvironmentId, cwd: gitCwd, queryClient }),
-  );
 
   const runImmediateGitActionMutation = useMutation(
     gitRunStackedActionMutationOptions({
@@ -1618,16 +1613,7 @@ export default function GitActionsControl({
 
   return (
     <>
-      {!isRepo ? (
-        <Button
-          variant="outline"
-          size="xs"
-          disabled={initMutation.isPending}
-          onClick={() => initMutation.mutate()}
-        >
-          {initMutation.isPending ? "Initializing..." : "Initialize Git"}
-        </Button>
-      ) : (
+      {!isRepo ? null : (
         <Group aria-label="Git actions" className="shrink-0">
           {quickActionDisabledReason ? (
             <Popover>

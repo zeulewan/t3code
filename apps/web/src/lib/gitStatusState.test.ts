@@ -103,7 +103,6 @@ function createRegisteredGitStatusClient(environmentId: EnvironmentId) {
       removeWorktree: vi.fn(async () => undefined),
       createRef: vi.fn(async () => undefined),
       switchRef: vi.fn(async () => undefined),
-      init: vi.fn(async () => undefined),
     },
     git: {
       runStackedAction: vi.fn(async () => ({}) as any),

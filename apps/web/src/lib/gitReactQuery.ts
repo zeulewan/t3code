@@ -27,8 +27,6 @@ export const gitQueryKeys = {
 };
 
 export const gitMutationKeys = {
-  init: (environmentId: EnvironmentId | null, cwd: string | null) =>
-    ["git", "mutation", "init", environmentId ?? null, cwd] as const,
   switchRef: (environmentId: EnvironmentId | null, cwd: string | null) =>
     ["git", "mutation", "switchRef", environmentId ?? null, cwd] as const,
   runStackedAction: (environmentId: EnvironmentId | null, cwd: string | null) =>
@@ -124,27 +122,6 @@ export function gitResolvePullRequestQueryOptions(input: {
     staleTime: 30_000,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
-  });
-}
-
-/**
- * @deprecated Use a VCS-named mutation helper once the UI naming migration lands.
- */
-export function gitInitMutationOptions(input: {
-  environmentId: EnvironmentId | null;
-  cwd: string | null;
-  queryClient: QueryClient;
-}) {
-  return mutationOptions({
-    mutationKey: gitMutationKeys.init(input.environmentId, input.cwd),
-    mutationFn: async () => {
-      if (!input.cwd || !input.environmentId) throw new Error("Git init is unavailable.");
-      const api = ensureEnvironmentApi(input.environmentId);
-      return api.vcs.init({ cwd: input.cwd });
-    },
-    onSettled: async () => {
-      await invalidateGitBranchQueries(input.queryClient, input.environmentId, input.cwd);
-    },
   });
 }
 
