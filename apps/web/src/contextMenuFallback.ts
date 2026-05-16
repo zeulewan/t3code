@@ -74,10 +74,10 @@ export function showContextMenuFallback<T extends string>(
         const isDisabled = item.disabled === true;
         button.disabled = isDisabled;
         button.className = isDisabled
-          ? "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-muted-foreground/60 cursor-not-allowed"
+          ? "flex min-h-8 w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-muted-foreground/60 cursor-not-allowed pointer-coarse:min-h-11 pointer-coarse:text-sm"
           : isLeafDestructive
-            ? "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-destructive hover:bg-accent cursor-default"
-            : "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-popover-foreground hover:bg-accent cursor-default";
+            ? "flex min-h-8 w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-destructive hover:bg-accent cursor-default pointer-coarse:min-h-11 pointer-coarse:text-sm"
+            : "flex min-h-8 w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-popover-foreground hover:bg-accent cursor-default pointer-coarse:min-h-11 pointer-coarse:text-sm";
 
         const label = document.createElement("span");
         label.className = "min-w-0 flex-1 truncate";
@@ -134,7 +134,7 @@ export function showContextMenuFallback<T extends string>(
       });
     };
 
-    overlay.addEventListener("mousedown", () => cleanup(null));
+    overlay.addEventListener("pointerdown", () => cleanup(null));
     document.addEventListener("keydown", onKeyDown);
     document.body.appendChild(overlay);
     openMenu(items, position?.x ?? 0, position?.y ?? 0, 0);

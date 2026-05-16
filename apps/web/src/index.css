@@ -55,6 +55,28 @@
   body {
     @apply text-foreground relative;
     background-color: var(--app-chrome-background);
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  input,
+  textarea,
+  select,
+  [contenteditable="true"],
+  [role="textbox"],
+  .select-text,
+  .chat-markdown,
+  .chat-markdown *,
+  [data-user-message-body="true"],
+  [data-user-message-body="true"] * {
+    -webkit-touch-callout: default;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  .chat-markdown a {
+    -webkit-touch-callout: none;
   }
 }
 
