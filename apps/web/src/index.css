@@ -50,6 +50,7 @@
     @apply border-border outline-ring/50;
   }
   html {
+    font-size: var(--app-ui-scale-font-size, 16px);
     background-color: var(--app-chrome-background);
   }
   body {
@@ -93,7 +94,7 @@
   select,
   [contenteditable="true"],
   [role="textbox"] {
-    font-size: 16px !important;
+    font-size: max(16px, 1rem) !important;
   }
 }
 
@@ -124,6 +125,7 @@
 
 :root {
   color-scheme: light;
+  --app-ui-scale-font-size: 16px;
   --radius: 0.625rem;
   --background: var(--color-white);
   --app-chrome-background: var(--background);
@@ -181,6 +183,18 @@
     --warning: var(--color-amber-500);
     --warning-foreground: var(--color-amber-400);
   }
+}
+
+:root[data-ui-scale="small"] {
+  --app-ui-scale-font-size: 15px;
+}
+
+:root[data-ui-scale="large"] {
+  --app-ui-scale-font-size: 17px;
+}
+
+:root[data-ui-scale="x-large"] {
+  --app-ui-scale-font-size: 18px;
 }
 
 body {
