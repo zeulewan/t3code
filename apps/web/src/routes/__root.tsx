@@ -27,6 +27,7 @@ import {
 } from "../components/ui/toast";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { useClientSettings } from "../hooks/useSettings";
+import { useApplyUiScale } from "../hooks/useUiScale";
 import {
   deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKeyFromPath,
@@ -84,8 +85,11 @@ export const Route = createRootRoute({
 
 function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
+  const uiScale = useClientSettings((settings) => settings.uiScale);
   const { authGateState } = Route.useRouteContext();
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
+
+  useApplyUiScale(uiScale);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {

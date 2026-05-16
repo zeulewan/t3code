@@ -115,6 +115,7 @@ describe("LocalApi", () => {
     const settings = {
       ...DEFAULT_CLIENT_SETTINGS,
       timestampFormat: "12-hour" as const,
+      uiScale: "large" as const,
     };
 
     await api.persistence.setClientSettings(settings);
