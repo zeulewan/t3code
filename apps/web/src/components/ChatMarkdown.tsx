@@ -33,6 +33,7 @@ import {
   resolveMarkdownFileLinkMeta,
   rewriteMarkdownFileUriHref,
 } from "../markdown-links";
+import { useLongPressContextMenu } from "../hooks/useLongPressContextMenu";
 import { readLocalApi } from "../localApi";
 import { cn } from "../lib/utils";
 
@@ -429,11 +430,8 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
     );
   }, []);
 
-  const handleContextMenu = useCallback(
-    async (event: ReactMouseEvent<HTMLAnchorElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-
+  const openFileLinkContextMenu = useCallback(
+    async (position: { x: number; y: number }) => {
       const api = readLocalApi();
       if (!api) return;
 
@@ -443,7 +441,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
           { id: "copy-relative", label: "Copy relative path" },
           { id: "copy-full", label: "Copy full path" },
         ] as const,
-        { x: event.clientX, y: event.clientY },
+        position,
       );
 
       if (clicked === "open") {
@@ -460,6 +458,22 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
     },
     [displayPath, handleCopy, handleOpen, targetPath],
   );
+  const handleContextMenu = useCallback(
+    async (event: ReactMouseEvent<HTMLAnchorElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await openFileLinkContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+      });
+    },
+    [openFileLinkContextMenu],
+  );
+  const fileLinkLongPressMenuHandlers = useLongPressContextMenu<HTMLAnchorElement>({
+    onLongPress: (position) => {
+      void openFileLinkContextMenu(position);
+    },
+  });
 
   return (
     <Tooltip>
@@ -474,6 +488,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
               handleOpen();
             }}
             onContextMenu={handleContextMenu}
+            {...fileLinkLongPressMenuHandlers}
           >
             <VscodeEntryIcon
               pathValue={filePath}
