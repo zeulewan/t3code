@@ -110,7 +110,13 @@ const UI_SCALE_OPTIONS = [
   { value: "default", label: "Default" },
   { value: "large", label: "Large" },
   { value: "x-large", label: "XL" },
+  { value: "xx-large", label: "2XL" },
+  { value: "xxx-large", label: "3XL" },
 ] as const satisfies ReadonlyArray<{ value: UiScale; label: string }>;
+
+function isUiScale(value: string | undefined): value is UiScale {
+  return UI_SCALE_OPTIONS.some((option) => option.value === value);
+}
 
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
 
@@ -583,18 +589,13 @@ export function GeneralSettingsPanel() {
           }
           control={
             <ToggleGroup
-              className="w-full sm:w-auto"
+              className="w-full flex-wrap justify-end gap-y-1 sm:w-auto"
               variant="outline"
               size="sm"
               value={[settings.uiScale]}
               onValueChange={(value) => {
                 const next = value[0];
-                if (
-                  next === "small" ||
-                  next === "default" ||
-                  next === "large" ||
-                  next === "x-large"
-                ) {
+                if (isUiScale(next)) {
                   updateSettings({ uiScale: next });
                 }
               }}

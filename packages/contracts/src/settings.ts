@@ -13,7 +13,14 @@ export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"])
 export type TimestampFormat = typeof TimestampFormat.Type;
 export const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
 
-export const UiScale = Schema.Literals(["small", "default", "large", "x-large"]);
+export const UiScale = Schema.Literals([
+  "small",
+  "default",
+  "large",
+  "x-large",
+  "xx-large",
+  "xxx-large",
+]);
 export type UiScale = typeof UiScale.Type;
 export const DEFAULT_UI_SCALE: UiScale = "default";
 

@@ -197,6 +197,14 @@
   --app-ui-scale-font-size: 18px;
 }
 
+:root[data-ui-scale="xx-large"] {
+  --app-ui-scale-font-size: 20px;
+}
+
+:root[data-ui-scale="xxx-large"] {
+  --app-ui-scale-font-size: 22px;
+}
+
 body {
   font-family:
     "DM Sans",
