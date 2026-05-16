@@ -35,6 +35,9 @@ import {
 } from "./httpCors.ts";
 
 const PROJECT_FAVICON_CACHE_CONTROL = "public, max-age=3600";
+const STATIC_INDEX_CACHE_CONTROL = "no-cache";
+const STATIC_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
+const STATIC_FILE_CACHE_CONTROL = "public, max-age=3600";
 const FALLBACK_PROJECT_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#6b728080" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-fallback="project-favicon"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"/></svg>`;
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -59,6 +62,17 @@ export function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
   redirectUrl.search = requestUrl.search;
   redirectUrl.hash = requestUrl.hash;
   return redirectUrl.toString();
+}
+
+export function resolveStaticCacheControl(staticRelativePath: string): string {
+  const normalizedPath = staticRelativePath.replace(/\\/g, "/");
+  if (normalizedPath === "index.html" || normalizedPath.endsWith("/index.html")) {
+    return STATIC_INDEX_CACHE_CONTROL;
+  }
+  if (normalizedPath.startsWith("assets/")) {
+    return STATIC_ASSET_CACHE_CONTROL;
+  }
+  return STATIC_FILE_CACHE_CONTROL;
 }
 
 const requireAuthenticatedRequest = Effect.gen(function* () {
@@ -305,10 +319,14 @@ export const staticAndDevRouteLayer = HttpRouter.add(
       return HttpServerResponse.uint8Array(indexData, {
         status: 200,
         contentType: "text/html; charset=utf-8",
+        headers: {
+          "Cache-Control": STATIC_INDEX_CACHE_CONTROL,
+        },
       });
     }
 
     const contentType = Mime.getType(filePath) ?? "application/octet-stream";
+    const cacheControl = resolveStaticCacheControl(path.relative(staticRoot, filePath));
     const data = yield* fileSystem
       .readFile(filePath)
       .pipe(Effect.catch(() => Effect.succeed(null)));
@@ -319,6 +337,9 @@ export const staticAndDevRouteLayer = HttpRouter.add(
     return HttpServerResponse.uint8Array(data, {
       status: 200,
       contentType,
+      headers: {
+        "Cache-Control": cacheControl,
+      },
     });
   }),
 );
