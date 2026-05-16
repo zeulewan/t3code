@@ -42,6 +42,9 @@ import {
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import { browserApiCorsAllowedHeaders, browserApiCorsAllowedMethods } from "./httpCors.ts";
 
+const STATIC_INDEX_CACHE_CONTROL = "no-cache";
+const STATIC_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
+const STATIC_FILE_CACHE_CONTROL = "public, max-age=3600";
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 
@@ -72,6 +75,17 @@ export function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
   redirectUrl.search = requestUrl.search;
   redirectUrl.hash = requestUrl.hash;
   return redirectUrl.toString();
+}
+
+export function resolveStaticCacheControl(staticRelativePath: string): string {
+  const normalizedPath = staticRelativePath.replace(/\\/g, "/");
+  if (normalizedPath === "index.html" || normalizedPath.endsWith("/index.html")) {
+    return STATIC_INDEX_CACHE_CONTROL;
+  }
+  if (normalizedPath.startsWith("assets/")) {
+    return STATIC_ASSET_CACHE_CONTROL;
+  }
+  return STATIC_FILE_CACHE_CONTROL;
 }
 
 const authenticateRawRouteWithScope = (
@@ -286,10 +300,14 @@ export const staticAndDevRouteLayer = HttpRouter.add(
       return HttpServerResponse.uint8Array(indexData, {
         status: 200,
         contentType: "text/html; charset=utf-8",
+        headers: {
+          "Cache-Control": STATIC_INDEX_CACHE_CONTROL,
+        },
       });
     }
 
     const contentType = Mime.getType(filePath) ?? "application/octet-stream";
+    const cacheControl = resolveStaticCacheControl(path.relative(staticRoot, filePath));
     const data = yield* fileSystem.readFile(filePath).pipe(Effect.orElseSucceed(() => null));
     if (!data) {
       return HttpServerResponse.text("Internal Server Error", { status: 500 });
@@ -298,6 +316,9 @@ export const staticAndDevRouteLayer = HttpRouter.add(
     return HttpServerResponse.uint8Array(data, {
       status: 200,
       contentType,
+      headers: {
+        "Cache-Control": cacheControl,
+      },
     });
   }),
 );
