@@ -29,6 +29,7 @@ import ChatMarkdown from "../ChatMarkdown";
 import {
   BotIcon,
   CheckIcon,
+  ChevronUpIcon,
   CircleAlertIcon,
   EyeIcon,
   GlobeIcon,
@@ -136,6 +137,8 @@ interface MessagesTimelineProps {
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
   skills?: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
+  hiddenEarlierMessageCount?: number;
+  onShowEarlierMessages?: () => void;
   onIsAtEndChange: (isAtEnd: boolean) => void;
 }
 
@@ -165,6 +168,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   timestampFormat,
   workspaceRoot,
   skills = EMPTY_TIMELINE_SKILLS,
+  hiddenEarlierMessageCount = 0,
+  onShowEarlierMessages,
   onIsAtEndChange,
 }: MessagesTimelineProps) {
   const rawRows = useMemo(
@@ -252,6 +257,26 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }),
     [isRevertingCheckpoint, isWorking],
   );
+  const listHeader = useMemo(() => {
+    if (hiddenEarlierMessageCount <= 0 || !onShowEarlierMessages) {
+      return TIMELINE_LIST_HEADER;
+    }
+
+    return (
+      <div className="mx-auto flex w-full max-w-3xl justify-center py-3">
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-8 gap-1.5 rounded-full border border-border/60 bg-card/80 px-3 text-xs text-muted-foreground shadow-sm hover:text-foreground"
+          onClick={onShowEarlierMessages}
+        >
+          <ChevronUpIcon className="size-3.5" />
+          Show {hiddenEarlierMessageCount.toLocaleString()} earlier messages
+        </Button>
+      </div>
+    );
+  }, [hiddenEarlierMessageCount, onShowEarlierMessages]);
 
   // Stable renderItem — no closure deps. Row components read shared state
   // from TimelineRowCtx, which propagates through LegendList's memo.
@@ -289,7 +314,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           maintainVisibleContentPosition
           onScroll={handleScroll}
           className="h-full overflow-x-hidden overscroll-y-contain px-3 sm:px-5"
-          ListHeaderComponent={TIMELINE_LIST_HEADER}
+          ListHeaderComponent={listHeader}
           ListFooterComponent={TIMELINE_LIST_FOOTER}
         />
       </TimelineRowActivityCtx>

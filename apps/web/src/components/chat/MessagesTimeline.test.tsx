@@ -165,6 +165,21 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-user-message-collapsible="false"');
   });
 
+  it("renders a control for hidden earlier messages", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[buildUserTimelineEntry("Recent prompt.")]}
+        hiddenEarlierMessageCount={240}
+        onShowEarlierMessages={() => {}}
+      />,
+    );
+
+    expect(markup).toContain("Show 240 earlier messages");
+    expect(markup).toContain("lucide-chevron-up");
+  });
+
   it("renders inline terminal labels with the composer chip UI", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
