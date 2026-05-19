@@ -51,6 +51,8 @@ import {
   observeRpcStreamEffect,
 } from "./observability/RpcInstrumentation.ts";
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
+import { ProviderService } from "./provider/Services/ProviderService.ts";
+import { importCodexSession, listCodexSessions } from "./provider/codexSessions.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup.ts";
@@ -176,6 +178,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager;
       const providerRegistry = yield* ProviderRegistry;
+      const providerService = yield* ProviderService;
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
       const config = yield* ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents;
@@ -893,6 +896,24 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 Effect.mapError((cause) => toCommsError(cause, "Failed to update delivery status")),
               ),
             { "rpc.aggregate": "comms" },
+          ),
+        [WS_METHODS.codexSessionsList]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.codexSessionsList,
+            listCodexSessions(input).pipe(
+              Effect.provideService(ServerSettingsService, serverSettings),
+            ),
+            { "rpc.aggregate": "codex-sessions" },
+          ),
+        [WS_METHODS.codexSessionsImport]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.codexSessionsImport,
+            importCodexSession(input).pipe(
+              Effect.provideService(ServerSettingsService, serverSettings),
+              Effect.provideService(OrchestrationEngineService, orchestrationEngine),
+              Effect.provideService(ProviderService, providerService),
+            ),
+            { "rpc.aggregate": "codex-sessions" },
           ),
         [WS_METHODS.serverGetConfig]: (_input) =>
           observeRpcEffect(WS_METHODS.serverGetConfig, loadServerConfig, {
