@@ -331,6 +331,13 @@ const commsSendCommand = Command.make("send", {
           });
         }
 
+        const shouldDeliver = !flags.noDeliver && flags.type !== "defer";
+        if (shouldDeliver && context.mode !== "live") {
+          return yield* new OrchestrationCliError({
+            message: `Comms ${flags.type} delivery requires a running T3 server. Start T3, or use --no-deliver/--type defer to only write inbox records.`,
+          });
+        }
+
         const sent = yield* context.commsRepository.sendMessage({
           senderActorId: sender.actorId,
           recipientActorIds: [firstRecipient, ...restRecipients],
@@ -342,7 +349,6 @@ const commsSendCommand = Command.make("send", {
           },
         });
 
-        const shouldDeliver = !flags.noDeliver && flags.type !== "defer";
         const deliveryResult = shouldDeliver
           ? yield* deliverToThreads(context, {
               sender,

@@ -33,6 +33,7 @@ import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolv
 import * as ServerRuntimeStartup from "../serverRuntimeStartup.ts";
 import {
   clearPersistedServerRuntimeState,
+  isPersistedServerRuntimeStateProcessAlive,
   readPersistedServerRuntimeState,
 } from "../serverRuntimeState.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
@@ -367,7 +368,10 @@ const tryResolveLiveProjectExecutionMode = Effect.fn("tryResolveLiveProjectExecu
       origin: runtimeState.value.origin,
       cause: attempted.failure,
     });
-    yield* clearPersistedServerRuntimeState(config.serverRuntimeStatePath);
+    const processAlive = yield* isPersistedServerRuntimeStateProcessAlive(runtimeState.value);
+    if (!processAlive) {
+      yield* clearPersistedServerRuntimeState(config.serverRuntimeStatePath);
+    }
     return Option.none<{ readonly origin: string }>();
   },
 );

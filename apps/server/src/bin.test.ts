@@ -18,6 +18,7 @@ import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 import * as CliError from "effect/unstable/cli/CliError";
 import * as TestConsole from "effect/testing/TestConsole";
 import { Command } from "effect/unstable/cli";
+import * as DateTime from "effect/DateTime";
 
 import { cli, makeCli } from "./bin.ts";
 import * as ServerConfig from "./config.ts";
@@ -489,6 +490,137 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
           assert.equal(addedProject?.title, "Live Project");
         }),
       );
+    }),
+  );
+
+  it.effect("keeps runtime state when a live probe fails for a running pid", () =>
+    Effect.gen(function* () {
+      const baseDir = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "t3-cli-runtime-state-probe-test-"),
+      );
+      const workspaceRoot = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "t3-cli-runtime-state-workspace-"),
+      );
+      const config = yield* makeCliTestServerConfig(baseDir);
+
+      yield* persistServerRuntimeState({
+        path: config.serverRuntimeStatePath,
+        state: {
+          version: 1,
+          pid: process.pid,
+          host: "127.0.0.1",
+          port: 1,
+          origin: "http://127.0.0.1:1",
+          startedAt: yield* Effect.map(DateTime.now, DateTime.formatIso),
+        },
+      });
+
+      yield* runCliWithRuntime([
+        "project",
+        "add",
+        workspaceRoot,
+        "--title",
+        "Probe Fallback Project",
+        "--base-dir",
+        baseDir,
+      ]);
+
+      assert.isTrue(NodeFS.existsSync(config.serverRuntimeStatePath));
+      const snapshot = yield* readPersistedSnapshot(baseDir);
+      assert.isTrue(
+        snapshot.projects.some(
+          (project) =>
+            project.workspaceRoot === workspaceRoot && project.title === "Probe Fallback Project",
+        ),
+      );
+    }),
+  );
+
+  it.effect("spawns an agent through a running server and registers a comms actor", () =>
+    Effect.gen(function* () {
+      const baseDir = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "t3-cli-agent-live-test-"),
+      );
+      const workspaceRoot = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "t3-cli-agent-live-workspace-"),
+      );
+
+      yield* withLiveProjectCliServer(baseDir, () =>
+        Effect.gen(function* () {
+          yield* runCliWithRuntime([
+            "project",
+            "add",
+            workspaceRoot,
+            "--title",
+            "Agent Project",
+            "--base-dir",
+            baseDir,
+          ]);
+
+          yield* runCliWithRuntime([
+            "agent",
+            "spawn",
+            "Agent Project",
+            "Test Agent",
+            "Reply exactly AGENT_READY and nothing else.",
+            "--base-dir",
+            baseDir,
+            "--provider",
+            "codex",
+            "--model",
+            "gpt-5.4",
+            "--effort",
+            "low",
+            "--handle",
+            "test-agent",
+          ]);
+
+          const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+          const readModel = yield* projectionSnapshotQuery.getSnapshot();
+          const thread = readModel.threads.find((entry) => entry.title === "Test Agent");
+          assert.isTrue(thread !== undefined);
+          assert.equal(thread?.modelSelection.instanceId, "codex");
+          assert.equal(thread?.modelSelection.model, "gpt-5.4");
+
+          const actorsOutput = yield* captureStdout(
+            runCli(["comms", "actors", "--base-dir", baseDir]),
+          );
+          assert.isTrue(actorsOutput.output.includes("@test-agent"));
+
+          const sendOutput = yield* captureStdout(
+            runCli(["agent", "send", "test-agent", "Status?", "--base-dir", baseDir]),
+          );
+          assert.isTrue(sendOutput.output.includes(`Sent turn to ${thread?.id}.`));
+        }),
+      );
+    }),
+  );
+
+  it.effect("rejects direct comms delivery when no live server is discoverable", () =>
+    Effect.gen(function* () {
+      const baseDir = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "t3-cli-comms-offline-test-"),
+      );
+
+      yield* runCliWithRuntime(["comms", "register", "sender", "--base-dir", baseDir]);
+      yield* runCliWithRuntime(["comms", "register", "receiver", "--base-dir", baseDir]);
+
+      const error = yield* runCliWithRuntime([
+        "comms",
+        "send",
+        "sender",
+        "receiver",
+        "hello",
+        "--base-dir",
+        baseDir,
+      ]).pipe(Effect.flip);
+
+      assert.isTrue(String(error).includes("requires a running T3 server"));
+
+      const inboxOutput = yield* captureStdout(
+        runCli(["comms", "inbox", "receiver", "--base-dir", baseDir]),
+      );
+      assert.equal(inboxOutput.output, "Inbox is empty.");
     }),
   );
 
