@@ -21,6 +21,7 @@ import {
   type AuthAccessStreamEvent,
   type AuthEnvironmentScope,
   AuthSessionId,
+  CommsError,
   CommandId,
   type DiscoveredLocalServerList,
   EventId,
@@ -111,10 +112,17 @@ import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as SessionStore from "./auth/SessionStore.ts";
 import { failEnvironmentAuthInvalid, failEnvironmentInternal } from "./auth/http.ts";
+import { CommsRepository } from "./persistence/Services/Comms.ts";
 import * as RelayClient from "@t3tools/shared/relayClient";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+
+const toCommsError = (cause: unknown, message: string) =>
+  new CommsError({
+    message,
+    cause,
+  });
 
 function unexpectedCompatibilityError(error: never): never {
   throw new Error(`Unhandled compatibility error: ${String(error)}`);
@@ -299,6 +307,12 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [WS_METHODS.sourceControlLookupRepository, AuthOrchestrationReadScope],
   [WS_METHODS.sourceControlCloneRepository, AuthOrchestrationOperateScope],
   [WS_METHODS.sourceControlPublishRepository, AuthOrchestrationOperateScope],
+  [WS_METHODS.commsUpsertActor, AuthOrchestrationOperateScope],
+  [WS_METHODS.commsListActors, AuthOrchestrationReadScope],
+  [WS_METHODS.commsSendMessage, AuthOrchestrationOperateScope],
+  [WS_METHODS.commsListInbox, AuthOrchestrationReadScope],
+  [WS_METHODS.commsListConversationMessages, AuthOrchestrationReadScope],
+  [WS_METHODS.commsSetDeliveryStatus, AuthOrchestrationOperateScope],
   [WS_METHODS.projectsListEntries, AuthOrchestrationReadScope],
   [WS_METHODS.projectsReadFile, AuthOrchestrationReadScope],
   [WS_METHODS.projectsSearchEntries, AuthOrchestrationReadScope],
@@ -417,6 +431,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const sourceControlDiscovery = yield* SourceControlDiscovery.SourceControlDiscovery;
+      const commsRepository = yield* CommsRepository;
       const automaticGitFetchInterval = serverSettings.getSettings.pipe(
         Effect.map((settings) => settings.automaticGitFetchInterval),
         Effect.catch((cause) =>
@@ -1166,6 +1181,60 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
               );
             }),
             { "rpc.aggregate": "orchestration" },
+          ),
+        [WS_METHODS.commsUpsertActor]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.commsUpsertActor,
+            commsRepository
+              .upsertActor(input)
+              .pipe(Effect.mapError((cause) => toCommsError(cause, "Failed to upsert actor"))),
+            { "rpc.aggregate": "comms" },
+          ),
+        [WS_METHODS.commsListActors]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.commsListActors,
+            commsRepository
+              .listActors(input)
+              .pipe(Effect.mapError((cause) => toCommsError(cause, "Failed to list actors"))),
+            { "rpc.aggregate": "comms" },
+          ),
+        [WS_METHODS.commsSendMessage]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.commsSendMessage,
+            commsRepository
+              .sendMessage(input)
+              .pipe(Effect.mapError((cause) => toCommsError(cause, "Failed to send message"))),
+            { "rpc.aggregate": "comms" },
+          ),
+        [WS_METHODS.commsListInbox]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.commsListInbox,
+            commsRepository
+              .listInbox(input)
+              .pipe(Effect.mapError((cause) => toCommsError(cause, "Failed to list inbox"))),
+            { "rpc.aggregate": "comms" },
+          ),
+        [WS_METHODS.commsListConversationMessages]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.commsListConversationMessages,
+            commsRepository
+              .listConversationMessages(input)
+              .pipe(
+                Effect.mapError((cause) =>
+                  toCommsError(cause, "Failed to list conversation messages"),
+                ),
+              ),
+            { "rpc.aggregate": "comms" },
+          ),
+        [WS_METHODS.commsSetDeliveryStatus]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.commsSetDeliveryStatus,
+            commsRepository
+              .setDeliveryStatus(input)
+              .pipe(
+                Effect.mapError((cause) => toCommsError(cause, "Failed to update delivery status")),
+              ),
+            { "rpc.aggregate": "comms" },
           ),
         [WS_METHODS.serverGetConfig]: (_input) =>
           observeRpcEffect(WS_METHODS.serverGetConfig, loadServerConfig, {

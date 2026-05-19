@@ -7,7 +7,9 @@ import * as CliError from "effect/unstable/cli/CliError";
 
 import * as NetService from "@t3tools/shared/Net";
 import packageJson from "../package.json" with { type: "json" };
+import { agentCommand } from "./cli/agent.ts";
 import { authCommand } from "./cli/auth.ts";
+import { commsCommand } from "./cli/comms.ts";
 import { connectCommand } from "./cli/connect.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { sharedServerCommandFlags } from "./cli/config.ts";
@@ -47,6 +49,8 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       serveCommand,
       authCommand,
       projectCommand,
+      agentCommand,
+      commsCommand,
       cloudEnabled ? connectCommand : connectUnavailableCommand,
     ]),
   );

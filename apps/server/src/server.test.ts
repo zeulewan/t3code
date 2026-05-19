@@ -81,6 +81,7 @@ import { OrchestrationListenerCallbackError } from "./orchestration/Errors.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
+import * as Comms from "./persistence/Services/Comms.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/providerMaintenance.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
@@ -335,6 +336,7 @@ const buildAppUnderTest = (options?: {
     orchestrationEngine?: Partial<OrchestrationEngine.OrchestrationEngineService["Service"]>;
     projectionSnapshotQuery?: Partial<ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]>;
     checkpointDiffQuery?: Partial<CheckpointDiffQuery.CheckpointDiffQuery["Service"]>;
+    commsRepository?: Partial<Comms.CommsRepository["Service"]>;
     browserTraceCollector?: Partial<BrowserTraceCollector.BrowserTraceCollector["Service"]>;
     serverLifecycleEvents?: Partial<ServerLifecycleEvents.ServerLifecycleEvents["Service"]>;
     serverRuntimeStartup?: Partial<ServerRuntimeStartup.ServerRuntimeStartup["Service"]>;
@@ -706,6 +708,21 @@ const buildAppUnderTest = (options?: {
           getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
           getThreadCheckpointContext: () => Effect.succeed(Option.none()),
           ...options?.layers?.projectionSnapshotQuery,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(Comms.CommsRepository)({
+          upsertActor: () => Effect.die("CommsRepository.upsertActor test mock not implemented"),
+          getActorById: () => Effect.succeed(Option.none()),
+          getActorByHandle: () => Effect.succeed(Option.none()),
+          listActors: () => Effect.succeed([]),
+          sendMessage: () => Effect.die("CommsRepository.sendMessage test mock not implemented"),
+          listInbox: () => Effect.succeed([]),
+          listConversationMessages: () => Effect.succeed([]),
+          setDeliveryStatus: () =>
+            Effect.die("CommsRepository.setDeliveryStatus test mock not implemented"),
+          getDeliveryById: () => Effect.succeed(Option.none()),
+          ...options?.layers?.commsRepository,
         }),
       ),
       Layer.provide(

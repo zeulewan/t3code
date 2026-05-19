@@ -9,6 +9,19 @@ import {
   EnvironmentAuthorizationError,
 } from "./auth.ts";
 import {
+  CommsActor,
+  CommsDelivery,
+  CommsError,
+  CommsListActorsInput,
+  CommsListConversationMessagesInput,
+  CommsListInboxInput,
+  CommsMessageWithDelivery,
+  CommsSendMessageInput,
+  CommsSendMessageResult,
+  CommsSetDeliveryStatusInput,
+  CommsUpsertActorInput,
+} from "./comms.ts";
+import {
   FilesystemBrowseInput,
   FilesystemBrowseResult,
   FilesystemBrowseError,
@@ -222,6 +235,14 @@ export const WS_METHODS = {
   sourceControlCloneRepository: "sourceControl.cloneRepository",
   sourceControlPublishRepository: "sourceControl.publishRepository",
 
+  // Agent comms methods
+  commsUpsertActor: "comms.upsertActor",
+  commsListActors: "comms.listActors",
+  commsSendMessage: "comms.sendMessage",
+  commsListInbox: "comms.listInbox",
+  commsListConversationMessages: "comms.listConversationMessages",
+  commsSetDeliveryStatus: "comms.setDeliveryStatus",
+
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
   subscribeTerminalEvents: "subscribeTerminalEvents",
@@ -352,6 +373,45 @@ export const WsSourceControlPublishRepositoryRpc = Rpc.make(
     error: Schema.Union([SourceControlRepositoryError, EnvironmentAuthorizationError]),
   },
 );
+
+export const WsCommsUpsertActorRpc = Rpc.make(WS_METHODS.commsUpsertActor, {
+  payload: CommsUpsertActorInput,
+  success: CommsActor,
+  error: Schema.Union([CommsError, EnvironmentAuthorizationError]),
+});
+
+export const WsCommsListActorsRpc = Rpc.make(WS_METHODS.commsListActors, {
+  payload: CommsListActorsInput,
+  success: Schema.Array(CommsActor),
+  error: Schema.Union([CommsError, EnvironmentAuthorizationError]),
+});
+
+export const WsCommsSendMessageRpc = Rpc.make(WS_METHODS.commsSendMessage, {
+  payload: CommsSendMessageInput,
+  success: CommsSendMessageResult,
+  error: Schema.Union([CommsError, EnvironmentAuthorizationError]),
+});
+
+export const WsCommsListInboxRpc = Rpc.make(WS_METHODS.commsListInbox, {
+  payload: CommsListInboxInput,
+  success: Schema.Array(CommsMessageWithDelivery),
+  error: Schema.Union([CommsError, EnvironmentAuthorizationError]),
+});
+
+export const WsCommsListConversationMessagesRpc = Rpc.make(
+  WS_METHODS.commsListConversationMessages,
+  {
+    payload: CommsListConversationMessagesInput,
+    success: Schema.Array(CommsMessageWithDelivery),
+    error: Schema.Union([CommsError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsCommsSetDeliveryStatusRpc = Rpc.make(WS_METHODS.commsSetDeliveryStatus, {
+  payload: CommsSetDeliveryStatusInput,
+  success: CommsDelivery,
+  error: Schema.Union([CommsError, EnvironmentAuthorizationError]),
+});
 
 export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
   payload: ProjectSearchEntriesInput,
@@ -697,6 +757,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,
+  WsCommsUpsertActorRpc,
+  WsCommsListActorsRpc,
+  WsCommsSendMessageRpc,
+  WsCommsListInboxRpc,
+  WsCommsListConversationMessagesRpc,
+  WsCommsSetDeliveryStatusRpc,
   WsProjectsListEntriesRpc,
   WsProjectsReadFileRpc,
   WsProjectsSearchEntriesRpc,
