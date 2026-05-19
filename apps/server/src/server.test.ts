@@ -81,6 +81,7 @@ import {
   ProviderRegistry,
   type ProviderRegistryShape,
 } from "./provider/Services/ProviderRegistry.ts";
+import { ProviderService, type ProviderServiceShape } from "./provider/Services/ProviderService.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/providerMaintenance.ts";
 import { ServerLifecycleEvents, type ServerLifecycleEventsShape } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup, type ServerRuntimeStartupShape } from "./serverRuntimeStartup.ts";
@@ -321,6 +322,7 @@ const buildAppUnderTest = (options?: {
   layers?: {
     keybindings?: Partial<KeybindingsShape>;
     providerRegistry?: Partial<ProviderRegistryShape>;
+    providerService?: Partial<ProviderServiceShape>;
     serverSettings?: Partial<ServerSettingsShape>;
     externalLauncher?: Partial<ExternalLauncher.ExternalLauncherShape>;
     vcsDriver?: Partial<VcsDriver.VcsDriverShape>;
@@ -537,6 +539,28 @@ const buildAppUnderTest = (options?: {
           setProviderMaintenanceActionState: () => Effect.succeed([]),
           streamChanges: Stream.empty,
           ...options?.layers?.providerRegistry,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(ProviderService)({
+          startSession: () => Effect.die("ProviderService.startSession test mock not implemented"),
+          sendTurn: () => Effect.die("ProviderService.sendTurn test mock not implemented"),
+          interruptTurn: () =>
+            Effect.die("ProviderService.interruptTurn test mock not implemented"),
+          respondToRequest: () =>
+            Effect.die("ProviderService.respondToRequest test mock not implemented"),
+          respondToUserInput: () =>
+            Effect.die("ProviderService.respondToUserInput test mock not implemented"),
+          stopSession: () => Effect.die("ProviderService.stopSession test mock not implemented"),
+          listSessions: () => Effect.succeed([]),
+          getCapabilities: () =>
+            Effect.die("ProviderService.getCapabilities test mock not implemented"),
+          getInstanceInfo: () =>
+            Effect.die("ProviderService.getInstanceInfo test mock not implemented"),
+          rollbackConversation: () =>
+            Effect.die("ProviderService.rollbackConversation test mock not implemented"),
+          streamEvents: Stream.empty,
+          ...options?.layers?.providerService,
         }),
       ),
       Layer.provide(

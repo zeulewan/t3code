@@ -20,6 +20,12 @@ import type {
 import type { ReviewDiffPreviewInput, ReviewDiffPreviewResult } from "./review.ts";
 import type { FilesystemBrowseInput, FilesystemBrowseResult } from "./filesystem.ts";
 import type {
+  CodexSessionImportInput,
+  CodexSessionImportResult,
+  CodexSessionListInput,
+  CodexSessionListResult,
+} from "./codexSessions.ts";
+import type {
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
   ProjectWriteFileInput,
@@ -476,6 +482,8 @@ export interface LocalApi {
     removeKeybinding: (input: ServerRemoveKeybindingInput) => Promise<ServerRemoveKeybindingResult>;
     getSettings: () => Promise<ServerSettings>;
     updateSettings: (patch: ServerSettingsPatch) => Promise<ServerSettings>;
+    listCodexSessions: (input: CodexSessionListInput) => Promise<CodexSessionListResult>;
+    importCodexSession: (input: CodexSessionImportInput) => Promise<CodexSessionImportResult>;
     discoverSourceControl: () => Promise<SourceControlDiscoveryResult>;
     getTraceDiagnostics: () => Promise<ServerTraceDiagnosticsResult>;
     getProcessDiagnostics: () => Promise<ServerProcessDiagnosticsResult>;

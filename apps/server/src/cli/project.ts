@@ -375,6 +375,10 @@ const projectRemoveCommand = Command.make("remove", {
   project: Argument.string("project").pipe(
     Argument.withDescription("Project id or workspace root to remove."),
   ),
+  force: Flag.boolean("force").pipe(
+    Flag.withDescription("Delete project threads before removing the project."),
+    Flag.withDefault(false),
+  ),
 }).pipe(
   Command.withDescription("Remove a project."),
   Command.withHandler((flags) =>
@@ -397,6 +401,7 @@ const projectRemoveCommand = Command.make("remove", {
           type: "project.delete",
           commandId: CommandId.make(yield* projectCommandUuid),
           projectId: project.id,
+          ...(flags.force ? { force: true } : {}),
         });
         return `Removed project ${project.id} (${project.title}).`;
       }),
