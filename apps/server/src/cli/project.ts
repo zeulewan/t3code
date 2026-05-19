@@ -37,6 +37,7 @@ import { RepositoryIdentityResolverLive } from "../project/Layers/RepositoryIden
 import { getAutoBootstrapDefaultModelSelection } from "../serverRuntimeStartup.ts";
 import {
   clearPersistedServerRuntimeState,
+  isPersistedServerRuntimeStateProcessAlive,
   readPersistedServerRuntimeState,
 } from "../serverRuntimeState.ts";
 import { WorkspacePathsLive } from "../workspace/Layers/WorkspacePaths.ts";
@@ -255,7 +256,10 @@ const tryResolveLiveProjectExecutionMode = Effect.fn("tryResolveLiveProjectExecu
       return Option.some(attempted.value);
     }
 
-    yield* clearPersistedServerRuntimeState(config.serverRuntimeStatePath);
+    const processAlive = yield* isPersistedServerRuntimeStateProcessAlive(runtimeState.value);
+    if (!processAlive) {
+      yield* clearPersistedServerRuntimeState(config.serverRuntimeStatePath);
+    }
     return Option.none<{ readonly origin: string }>();
   },
 );
