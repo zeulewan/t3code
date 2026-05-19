@@ -15,6 +15,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 
+import { makeThreadCommsHandle } from "../commsHandles.ts";
 import { projectLocationFlags } from "./config.ts";
 import {
   OrchestrationCliError,
@@ -72,15 +73,6 @@ const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const newCommandId = () => CommandId.make(crypto.randomUUID());
 const newMessageId = () => MessageId.make(crypto.randomUUID());
 const newThreadId = () => ThreadId.make(crypto.randomUUID());
-
-function makeHandle(value: string): string {
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return normalized.length > 0 ? normalized : `agent-${crypto.randomUUID().slice(0, 8)}`;
-}
 
 function modelSelection(input: {
   readonly provider: string;
@@ -296,7 +288,14 @@ const agentSpawnCommand = Command.make("spawn", {
           model: flags.model,
           effort: flags.effort,
         });
-        const handle = Option.getOrUndefined(flags.handle) ?? makeHandle(flags.name);
+        const handle = makeThreadCommsHandle({ title: flags.name, threadId });
+        const requestedHandle = Option.getOrUndefined(flags.handle);
+        if (requestedHandle !== undefined && requestedHandle !== handle) {
+          return yield* new OrchestrationCliError({
+            message:
+              "Custom agent handles are no longer supported. Rename the thread to change its comms handle.",
+          });
+        }
         const initialMessage = withAgentCommsInstructions({
           message: flags.message,
           context,
@@ -470,7 +469,7 @@ const agentModelCommand = Command.make("model", {
         });
         yield* context.commsRepository.upsertActor({
           kind: "agent",
-          handle: makeHandle(thread.title),
+          handle: makeThreadCommsHandle({ title: thread.title, threadId: thread.id }),
           displayName: thread.title,
           projectId: thread.projectId,
           threadId: thread.id,
