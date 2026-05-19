@@ -5,6 +5,19 @@ import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import { AuthAccessStreamEvent } from "./auth.ts";
 import {
+  CommsActor,
+  CommsDelivery,
+  CommsError,
+  CommsListActorsInput,
+  CommsListConversationMessagesInput,
+  CommsListInboxInput,
+  CommsMessageWithDelivery,
+  CommsSendMessageInput,
+  CommsSendMessageResult,
+  CommsSetDeliveryStatusInput,
+  CommsUpsertActorInput,
+} from "./comms.ts";
+import {
   FilesystemBrowseInput,
   FilesystemBrowseResult,
   FilesystemBrowseError,
@@ -113,6 +126,14 @@ export const WS_METHODS = {
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
 
+  // Agent comms methods
+  commsUpsertActor: "comms.upsertActor",
+  commsListActors: "comms.listActors",
+  commsSendMessage: "comms.sendMessage",
+  commsListInbox: "comms.listInbox",
+  commsListConversationMessages: "comms.listConversationMessages",
+  commsSetDeliveryStatus: "comms.setDeliveryStatus",
+
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
 
@@ -189,6 +210,45 @@ export const WsServerGetConfigRpc = Rpc.make(WS_METHODS.serverGetConfig, {
   payload: Schema.Struct({}),
   success: ServerConfig,
   error: Schema.Union([KeybindingsConfigError, ServerSettingsError]),
+});
+
+export const WsCommsUpsertActorRpc = Rpc.make(WS_METHODS.commsUpsertActor, {
+  payload: CommsUpsertActorInput,
+  success: CommsActor,
+  error: CommsError,
+});
+
+export const WsCommsListActorsRpc = Rpc.make(WS_METHODS.commsListActors, {
+  payload: CommsListActorsInput,
+  success: Schema.Array(CommsActor),
+  error: CommsError,
+});
+
+export const WsCommsSendMessageRpc = Rpc.make(WS_METHODS.commsSendMessage, {
+  payload: CommsSendMessageInput,
+  success: CommsSendMessageResult,
+  error: CommsError,
+});
+
+export const WsCommsListInboxRpc = Rpc.make(WS_METHODS.commsListInbox, {
+  payload: CommsListInboxInput,
+  success: Schema.Array(CommsMessageWithDelivery),
+  error: CommsError,
+});
+
+export const WsCommsListConversationMessagesRpc = Rpc.make(
+  WS_METHODS.commsListConversationMessages,
+  {
+    payload: CommsListConversationMessagesInput,
+    success: Schema.Array(CommsMessageWithDelivery),
+    error: CommsError,
+  },
+);
+
+export const WsCommsSetDeliveryStatusRpc = Rpc.make(WS_METHODS.commsSetDeliveryStatus, {
+  payload: CommsSetDeliveryStatusInput,
+  success: CommsDelivery,
+  error: CommsError,
 });
 
 export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProviders, {
@@ -517,6 +577,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,
+  WsCommsUpsertActorRpc,
+  WsCommsListActorsRpc,
+  WsCommsSendMessageRpc,
+  WsCommsListInboxRpc,
+  WsCommsListConversationMessagesRpc,
+  WsCommsSetDeliveryStatusRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsWriteFileRpc,
   WsShellOpenInEditorRpc,

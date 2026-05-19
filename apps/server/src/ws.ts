@@ -13,6 +13,7 @@ import {
   DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL,
   type AuthAccessStreamEvent,
   AuthSessionId,
+  CommsError,
   CommandId,
   EventId,
   type OrchestrationCommand,
@@ -92,10 +93,17 @@ import {
   type SessionCredentialChange,
 } from "./auth/Services/SessionCredentialService.ts";
 import { respondToAuthError } from "./auth/http.ts";
+import { CommsRepository } from "./persistence/Services/Comms.ts";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 const isWorkspacePathOutsideRootError = Schema.is(WorkspacePathOutsideRootError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+
+const toCommsError = (cause: unknown, message: string) =>
+  new CommsError({
+    message,
+    cause,
+  });
 
 function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
   OrchestrationEvent,
@@ -187,6 +195,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const serverEnvironment = yield* ServerEnvironment;
       const serverAuth = yield* ServerAuth;
       const sourceControlDiscovery = yield* SourceControlDiscoveryLayer.SourceControlDiscovery;
+      const commsRepository = yield* CommsRepository;
       const automaticGitFetchInterval = serverSettings.getSettings.pipe(
         Effect.map((settings) => settings.automaticGitFetchInterval),
         Effect.catch((cause) =>
@@ -852,6 +861,60 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               );
             }),
             { "rpc.aggregate": "orchestration" },
+          ),
+        [WS_METHODS.commsUpsertActor]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.commsUpsertActor,
+            commsRepository
+              .upsertActor(input)
+              .pipe(Effect.mapError((cause) => toCommsError(cause, "Failed to upsert actor"))),
+            { "rpc.aggregate": "comms" },
+          ),
+        [WS_METHODS.commsListActors]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.commsListActors,
+            commsRepository
+              .listActors(input)
+              .pipe(Effect.mapError((cause) => toCommsError(cause, "Failed to list actors"))),
+            { "rpc.aggregate": "comms" },
+          ),
+        [WS_METHODS.commsSendMessage]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.commsSendMessage,
+            commsRepository
+              .sendMessage(input)
+              .pipe(Effect.mapError((cause) => toCommsError(cause, "Failed to send message"))),
+            { "rpc.aggregate": "comms" },
+          ),
+        [WS_METHODS.commsListInbox]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.commsListInbox,
+            commsRepository
+              .listInbox(input)
+              .pipe(Effect.mapError((cause) => toCommsError(cause, "Failed to list inbox"))),
+            { "rpc.aggregate": "comms" },
+          ),
+        [WS_METHODS.commsListConversationMessages]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.commsListConversationMessages,
+            commsRepository
+              .listConversationMessages(input)
+              .pipe(
+                Effect.mapError((cause) =>
+                  toCommsError(cause, "Failed to list conversation messages"),
+                ),
+              ),
+            { "rpc.aggregate": "comms" },
+          ),
+        [WS_METHODS.commsSetDeliveryStatus]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.commsSetDeliveryStatus,
+            commsRepository
+              .setDeliveryStatus(input)
+              .pipe(
+                Effect.mapError((cause) => toCommsError(cause, "Failed to update delivery status")),
+              ),
+            { "rpc.aggregate": "comms" },
           ),
         [WS_METHODS.serverGetConfig]: (_input) =>
           observeRpcEffect(WS_METHODS.serverGetConfig, loadServerConfig, {

@@ -76,6 +76,7 @@ import {
 } from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
+import { CommsRepository, type CommsRepositoryShape } from "./persistence/Services/Comms.ts";
 import {
   ProviderRegistry,
   type ProviderRegistryShape,
@@ -339,6 +340,7 @@ const buildAppUnderTest = (options?: {
     serverRuntimeStartup?: Partial<ServerRuntimeStartupShape>;
     serverEnvironment?: Partial<ServerEnvironmentShape>;
     repositoryIdentityResolver?: Partial<RepositoryIdentityResolverShape>;
+    commsRepository?: Partial<CommsRepositoryShape>;
   };
 }) =>
   Effect.gen(function* () {
@@ -670,6 +672,21 @@ const buildAppUnderTest = (options?: {
           getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
           getThreadCheckpointContext: () => Effect.succeed(Option.none()),
           ...options?.layers?.projectionSnapshotQuery,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(CommsRepository)({
+          upsertActor: () => Effect.die("CommsRepository.upsertActor test mock not implemented"),
+          getActorById: () => Effect.succeed(Option.none()),
+          getActorByHandle: () => Effect.succeed(Option.none()),
+          listActors: () => Effect.succeed([]),
+          sendMessage: () => Effect.die("CommsRepository.sendMessage test mock not implemented"),
+          listInbox: () => Effect.succeed([]),
+          listConversationMessages: () => Effect.succeed([]),
+          setDeliveryStatus: () =>
+            Effect.die("CommsRepository.setDeliveryStatus test mock not implemented"),
+          getDeliveryById: () => Effect.succeed(Option.none()),
+          ...options?.layers?.commsRepository,
         }),
       ),
       Layer.provide(
