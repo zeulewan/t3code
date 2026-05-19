@@ -49,9 +49,9 @@ const captureStdout = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     return { result, output };
   }).pipe(Effect.provide(Layer.mergeAll(CliRuntimeLayer, TestConsole.layer)));
 
-const makeCliTestServerConfig = (baseDir: string) =>
+const makeCliTestServerConfig = (baseDir: string, devUrl?: URL) =>
   Effect.gen(function* () {
-    const derivedPaths = yield* deriveServerPaths(baseDir, undefined);
+    const derivedPaths = yield* deriveServerPaths(baseDir, devUrl);
     return {
       logLevel: "Info",
       traceMinLevel: "Info",
@@ -70,7 +70,7 @@ const makeCliTestServerConfig = (baseDir: string) =>
       baseDir,
       ...derivedPaths,
       staticDir: undefined,
-      devUrl: undefined,
+      devUrl,
       noBrowser: true,
       startupPresentation: "browser",
       desktopBootstrapToken: undefined,
@@ -93,9 +93,9 @@ const makeProjectPersistenceLayer = (config: ServerConfigShape) =>
     Layer.provide(Layer.succeed(ServerConfig, config)),
   );
 
-const readPersistedSnapshot = (baseDir: string) =>
+const readPersistedSnapshot = (baseDir: string, devUrl?: URL) =>
   Effect.gen(function* () {
-    const config = yield* makeCliTestServerConfig(baseDir);
+    const config = yield* makeCliTestServerConfig(baseDir, devUrl);
     return yield* Effect.gen(function* () {
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
       return yield* projectionSnapshotQuery.getSnapshot();
@@ -332,31 +332,85 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
-  it.effect("rejects dev-url on project commands", () =>
+  it.effect("spawns an agent through a running server and registers a comms actor", () =>
     Effect.gen(function* () {
-      const workspaceRoot = mkdtempSync(
-        join(tmpdir(), "t3-cli-projects-unknown-option-workspace-"),
+      const baseDir = mkdtempSync(join(tmpdir(), "t3-cli-agent-live-test-"));
+      const workspaceRoot = mkdtempSync(join(tmpdir(), "t3-cli-agent-live-workspace-"));
+
+      yield* withLiveProjectCliServer(baseDir, () =>
+        Effect.gen(function* () {
+          yield* runCliWithRuntime([
+            "project",
+            "add",
+            workspaceRoot,
+            "--title",
+            "Agent Project",
+            "--base-dir",
+            baseDir,
+          ]);
+
+          yield* runCliWithRuntime([
+            "agent",
+            "spawn",
+            "Agent Project",
+            "Test Agent",
+            "Reply exactly AGENT_READY and nothing else.",
+            "--base-dir",
+            baseDir,
+            "--provider",
+            "codex",
+            "--model",
+            "gpt-5.4",
+            "--effort",
+            "low",
+            "--handle",
+            "test-agent",
+          ]);
+
+          const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+          const readModel = yield* projectionSnapshotQuery.getSnapshot();
+          const thread = readModel.threads.find((entry) => entry.title === "Test Agent");
+          assert.isTrue(thread !== undefined);
+          assert.equal(thread?.modelSelection.instanceId, "codex");
+          assert.equal(thread?.modelSelection.model, "gpt-5.4");
+
+          const actorsOutput = yield* captureStdout(
+            runCli(["comms", "actors", "--base-dir", baseDir]),
+          );
+          assert.isTrue(actorsOutput.output.includes("@test-agent"));
+
+          const sendOutput = yield* captureStdout(
+            runCli(["agent", "send", "test-agent", "Status?", "--base-dir", baseDir]),
+          );
+          assert.isTrue(sendOutput.output.includes(`Sent turn to ${thread?.id}.`));
+        }),
       );
-      const error = yield* runCliWithRuntime([
+    }),
+  );
+
+  it.effect("accepts dev-url on project commands", () =>
+    Effect.gen(function* () {
+      const baseDir = mkdtempSync(join(tmpdir(), "t3-cli-projects-dev-url-test-"));
+      const workspaceRoot = mkdtempSync(join(tmpdir(), "t3-cli-projects-dev-url-workspace-"));
+      const devUrl = new URL("http://127.0.0.1:5173");
+
+      yield* runCliWithRuntime([
         "project",
         "add",
         workspaceRoot,
+        "--title",
+        "Dev URL Project",
+        "--base-dir",
+        baseDir,
         "--dev-url",
-        "http://127.0.0.1:5173",
-      ]).pipe(Effect.flip);
+        devUrl.href,
+      ]);
 
-      if (!CliError.isCliError(error)) {
-        assert.fail(`Expected CliError, got ${String(error)}`);
-      }
-      if (error._tag !== "ShowHelp") {
-        assert.fail(`Expected ShowHelp, got ${error._tag}`);
-      }
-      assert.deepEqual(error.commandPath, ["t3", "project", "add"]);
-      const optionError = error.errors[0] as CliError.CliError | undefined;
-      if (!optionError || optionError._tag !== "UnrecognizedOption") {
-        assert.fail(`Expected UnrecognizedOption, got ${String(optionError?._tag)}`);
-      }
-      assert.equal(optionError.option, "--dev-url");
+      const snapshot = yield* readPersistedSnapshot(baseDir, devUrl);
+      const addedProject = snapshot.projects.find(
+        (project) => project.workspaceRoot === workspaceRoot && project.deletedAt === null,
+      );
+      assert.equal(addedProject?.title, "Dev URL Project");
     }),
   );
 });
