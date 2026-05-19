@@ -240,6 +240,7 @@ import { useAssetUrls } from "../assets/assetUrls";
 
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
+const INITIAL_TIMELINE_MESSAGE_WINDOW = 120;
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
@@ -2023,6 +2024,63 @@ function ChatViewContent(props: ChatViewProps) {
       deriveTimelineEntries(timelineMessages, activeThread?.proposedPlans ?? [], workLogEntries),
     [activeThread?.proposedPlans, timelineMessages, workLogEntries],
   );
+  const [expandedTimelineHistoryThreadIds, setExpandedTimelineHistoryThreadIds] = useState<
+    ReadonlySet<ThreadId>
+  >(() => new Set());
+  const timelineHistoryExpanded =
+    activeThread !== undefined && expandedTimelineHistoryThreadIds.has(activeThread.id);
+  const displayedTimelineState = useMemo(() => {
+    if (timelineHistoryExpanded) {
+      return {
+        entries: timelineEntries,
+        hiddenMessageCount: 0,
+      };
+    }
+
+    let totalMessageCount = 0;
+    for (const entry of timelineEntries) {
+      if (entry.kind === "message") {
+        totalMessageCount += 1;
+      }
+    }
+
+    if (totalMessageCount <= INITIAL_TIMELINE_MESSAGE_WINDOW) {
+      return {
+        entries: timelineEntries,
+        hiddenMessageCount: 0,
+      };
+    }
+
+    let retainedMessageCount = 0;
+    let startIndex = 0;
+    for (let index = timelineEntries.length - 1; index >= 0; index -= 1) {
+      const entry = timelineEntries[index];
+      if (entry?.kind === "message") {
+        retainedMessageCount += 1;
+      }
+      if (retainedMessageCount >= INITIAL_TIMELINE_MESSAGE_WINDOW) {
+        startIndex = index;
+        break;
+      }
+    }
+
+    return {
+      entries: timelineEntries.slice(startIndex),
+      hiddenMessageCount: totalMessageCount - INITIAL_TIMELINE_MESSAGE_WINDOW,
+    };
+  }, [timelineEntries, timelineHistoryExpanded]);
+  const displayedTimelineEntries = displayedTimelineState.entries;
+  const hiddenTimelineMessageCount = displayedTimelineState.hiddenMessageCount;
+  const showEarlierTimelineMessages = useCallback(() => {
+    if (!activeThread) return;
+    const threadId = activeThread.id;
+    setExpandedTimelineHistoryThreadIds((existing) => {
+      if (existing.has(threadId)) return existing;
+      const next = new Set(existing);
+      next.add(threadId);
+      return next;
+    });
+  }, [activeThread]);
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
   const turnDiffSummaryByAssistantMessageId = useMemo(() => {
@@ -2035,14 +2093,14 @@ function ChatViewContent(props: ChatViewProps) {
   }, [turnDiffSummaries]);
   const revertTurnCountByUserMessageId = useMemo(() => {
     const byUserMessageId = new Map<MessageId, number>();
-    for (let index = 0; index < timelineEntries.length; index += 1) {
-      const entry = timelineEntries[index];
+    for (let index = 0; index < displayedTimelineEntries.length; index += 1) {
+      const entry = displayedTimelineEntries[index];
       if (!entry || entry.kind !== "message" || entry.message.role !== "user") {
         continue;
       }
 
-      for (let nextIndex = index + 1; nextIndex < timelineEntries.length; nextIndex += 1) {
-        const nextEntry = timelineEntries[nextIndex];
+      for (let nextIndex = index + 1; nextIndex < displayedTimelineEntries.length; nextIndex += 1) {
+        const nextEntry = displayedTimelineEntries[nextIndex];
         if (!nextEntry || nextEntry.kind !== "message") {
           continue;
         }
@@ -2064,7 +2122,11 @@ function ChatViewContent(props: ChatViewProps) {
     }
 
     return byUserMessageId;
-  }, [inferredCheckpointTurnCountByTurnId, timelineEntries, turnDiffSummaryByAssistantMessageId]);
+  }, [
+    displayedTimelineEntries,
+    inferredCheckpointTurnCountByTurnId,
+    turnDiffSummaryByAssistantMessageId,
+  ]);
 
   const gitCwd = activeProject
     ? projectScriptCwd({
@@ -4788,8 +4850,10 @@ function ChatViewContent(props: ChatViewProps) {
                 activeTurnInProgress={isWorking || !latestTurnSettled}
                 activeTurnStartedAt={activeWorkStartedAt}
                 listRef={legendListRef}
-                timelineEntries={timelineEntries}
+                timelineEntries={displayedTimelineEntries}
                 latestTurn={activeLatestTurn}
+                hiddenEarlierMessageCount={hiddenTimelineMessageCount}
+                onShowEarlierMessages={showEarlierTimelineMessages}
                 turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
                 activeThreadEnvironmentId={activeThread.environmentId}
                 routeThreadKey={routeThreadKey}
