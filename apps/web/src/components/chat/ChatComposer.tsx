@@ -529,6 +529,10 @@ export interface ChatComposerProps {
 
   onProviderModelSelect: (instanceId: ProviderInstanceId, model: string) => void;
   getModelDisabledReason: (instanceId: ProviderInstanceId, model: string) => string | null;
+  onCodexSessionResume?: (input: {
+    providerInstanceId: ProviderInstanceId;
+    providerThreadId: string;
+  }) => Promise<void> | void;
   toggleInteractionMode: () => void;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
   handleInteractionModeChange: (mode: ProviderInteractionMode) => void;
@@ -605,6 +609,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onChangeActivePendingUserInputCustomAnswer,
     onProviderModelSelect,
     getModelDisabledReason,
+    onCodexSessionResume,
     toggleInteractionMode,
     handleRuntimeModeChange,
     handleInteractionModeChange,
@@ -2503,6 +2508,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   modelOptionsByInstance={modelOptionsByInstance}
                   terminalOpen={terminalOpen}
                   open={isComposerModelPickerOpen}
+                  {...(gitCwd ? { codexSessionResumeCwd: gitCwd } : {})}
                   {...(composerProviderState.modelPickerIconClassName
                     ? {
                         activeProviderIconClassName: composerProviderState.modelPickerIconClassName,
@@ -2513,6 +2519,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   }}
                   getModelDisabledReason={getModelDisabledReason}
                   onInstanceModelChange={onProviderModelSelect}
+                  {...(onCodexSessionResume ? { onCodexSessionResume } : {})}
                 />
 
                 {isComposerFooterCompact ? (

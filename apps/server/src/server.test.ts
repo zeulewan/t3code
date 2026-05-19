@@ -83,6 +83,7 @@ import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
 import * as Comms from "./persistence/Services/Comms.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
+import * as ProviderService from "./provider/Services/ProviderService.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/providerMaintenance.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -318,6 +319,7 @@ const buildAppUnderTest = (options?: {
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
     providerRegistry?: Partial<ProviderRegistry.ProviderRegistry["Service"]>;
+    providerService?: Partial<ProviderService.ProviderService["Service"]>;
     serverSettings?: Partial<ServerSettings.ServerSettingsService["Service"]>;
     externalLauncher?: Partial<ExternalLauncher.ExternalLauncher["Service"]>;
     vcsDriver?: Partial<VcsDriver.VcsDriver["Service"]>;
@@ -548,6 +550,28 @@ const buildAppUnderTest = (options?: {
           setProviderMaintenanceActionState: () => Effect.succeed([]),
           streamChanges: Stream.empty,
           ...options?.layers?.providerRegistry,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(ProviderService.ProviderService)({
+          startSession: () => Effect.die("ProviderService.startSession test mock not implemented"),
+          sendTurn: () => Effect.die("ProviderService.sendTurn test mock not implemented"),
+          interruptTurn: () =>
+            Effect.die("ProviderService.interruptTurn test mock not implemented"),
+          respondToRequest: () =>
+            Effect.die("ProviderService.respondToRequest test mock not implemented"),
+          respondToUserInput: () =>
+            Effect.die("ProviderService.respondToUserInput test mock not implemented"),
+          stopSession: () => Effect.die("ProviderService.stopSession test mock not implemented"),
+          listSessions: () => Effect.succeed([]),
+          getCapabilities: () =>
+            Effect.die("ProviderService.getCapabilities test mock not implemented"),
+          getInstanceInfo: () =>
+            Effect.die("ProviderService.getInstanceInfo test mock not implemented"),
+          rollbackConversation: () =>
+            Effect.die("ProviderService.rollbackConversation test mock not implemented"),
+          streamEvents: Stream.empty,
+          ...options?.layers?.providerService,
         }),
       ),
       Layer.provide(

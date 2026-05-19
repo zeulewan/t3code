@@ -75,6 +75,8 @@ import {
   observeRpcStreamEffect as instrumentRpcStreamEffect,
 } from "./observability/RpcInstrumentation.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
+import { importCodexSession, listCodexSessions } from "./provider/codexSessions.ts";
+import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -313,6 +315,8 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [WS_METHODS.commsListInbox, AuthOrchestrationReadScope],
   [WS_METHODS.commsListConversationMessages, AuthOrchestrationReadScope],
   [WS_METHODS.commsSetDeliveryStatus, AuthOrchestrationOperateScope],
+  [WS_METHODS.codexSessionsList, AuthOrchestrationReadScope],
+  [WS_METHODS.codexSessionsImport, AuthOrchestrationOperateScope],
   [WS_METHODS.projectsListEntries, AuthOrchestrationReadScope],
   [WS_METHODS.projectsReadFile, AuthOrchestrationReadScope],
   [WS_METHODS.projectsSearchEntries, AuthOrchestrationReadScope],
@@ -418,6 +422,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
       const previewManager = yield* PreviewManager.PreviewManager;
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
+      const providerService = yield* ProviderService.ProviderService;
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
@@ -1235,6 +1240,27 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                 Effect.mapError((cause) => toCommsError(cause, "Failed to update delivery status")),
               ),
             { "rpc.aggregate": "comms" },
+          ),
+        [WS_METHODS.codexSessionsList]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.codexSessionsList,
+            listCodexSessions(input).pipe(
+              Effect.provideService(ServerSettings.ServerSettingsService, serverSettings),
+            ),
+            { "rpc.aggregate": "codex-sessions" },
+          ),
+        [WS_METHODS.codexSessionsImport]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.codexSessionsImport,
+            importCodexSession(input).pipe(
+              Effect.provideService(ServerSettings.ServerSettingsService, serverSettings),
+              Effect.provideService(
+                OrchestrationEngine.OrchestrationEngineService,
+                orchestrationEngine,
+              ),
+              Effect.provideService(ProviderService.ProviderService, providerService),
+            ),
+            { "rpc.aggregate": "codex-sessions" },
           ),
         [WS_METHODS.serverGetConfig]: (_input) =>
           observeRpcEffect(WS_METHODS.serverGetConfig, loadServerConfig, {

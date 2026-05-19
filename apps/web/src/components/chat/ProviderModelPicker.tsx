@@ -39,9 +39,14 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   open?: boolean;
   triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
+  codexSessionResumeCwd?: string;
   onOpenChange?: (open: boolean) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
+  onCodexSessionResume?: (input: {
+    providerInstanceId: ProviderInstanceId;
+    providerThreadId: string;
+  }) => Promise<void> | void;
 }) {
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
   const isMenuOpen = props.open ?? uncontrolledIsMenuOpen;
@@ -199,6 +204,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           {...(props.keybindings ? { keybindings: props.keybindings } : {})}
           modelOptionsByInstance={props.modelOptionsByInstance}
           terminalOpen={props.terminalOpen ?? false}
+          {...(props.codexSessionResumeCwd
+            ? { codexSessionResumeCwd: props.codexSessionResumeCwd }
+            : {})}
+          {...(props.onCodexSessionResume
+            ? { onCodexSessionResume: props.onCodexSessionResume }
+            : {})}
           onRequestClose={() => setIsMenuOpen(false)}
           {...(props.getModelDisabledReason
             ? { getModelDisabledReason: props.getModelDisabledReason }

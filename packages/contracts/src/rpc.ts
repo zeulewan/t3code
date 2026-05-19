@@ -22,6 +22,13 @@ import {
   CommsUpsertActorInput,
 } from "./comms.ts";
 import {
+  CodexSessionError,
+  CodexSessionImportInput,
+  CodexSessionImportResult,
+  CodexSessionListInput,
+  CodexSessionListResult,
+} from "./codexSessions.ts";
+import {
   FilesystemBrowseInput,
   FilesystemBrowseResult,
   FilesystemBrowseError,
@@ -166,6 +173,18 @@ export const WS_METHODS = {
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
 
+  // Agent comms methods
+  commsUpsertActor: "comms.upsertActor",
+  commsListActors: "comms.listActors",
+  commsSendMessage: "comms.sendMessage",
+  commsListInbox: "comms.listInbox",
+  commsListConversationMessages: "comms.listConversationMessages",
+  commsSetDeliveryStatus: "comms.setDeliveryStatus",
+
+  // Codex native session browser/import methods
+  codexSessionsList: "codex.sessions.list",
+  codexSessionsImport: "codex.sessions.import",
+
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
 
@@ -270,6 +289,18 @@ export const WsServerGetConfigRpc = Rpc.make(WS_METHODS.serverGetConfig, {
   payload: Schema.Struct({}),
   success: ServerConfig,
   error: Schema.Union([KeybindingsConfigError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
+export const WsCodexSessionsListRpc = Rpc.make(WS_METHODS.codexSessionsList, {
+  payload: CodexSessionListInput,
+  success: CodexSessionListResult,
+  error: Schema.Union([CodexSessionError, EnvironmentAuthorizationError]),
+});
+
+export const WsCodexSessionsImportRpc = Rpc.make(WS_METHODS.codexSessionsImport, {
+  payload: CodexSessionImportInput,
+  success: CodexSessionImportResult,
+  error: Schema.Union([CodexSessionError, EnvironmentAuthorizationError]),
 });
 
 export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProviders, {
@@ -763,6 +794,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsCommsListInboxRpc,
   WsCommsListConversationMessagesRpc,
   WsCommsSetDeliveryStatusRpc,
+  WsCodexSessionsListRpc,
+  WsCodexSessionsImportRpc,
   WsProjectsListEntriesRpc,
   WsProjectsReadFileRpc,
   WsProjectsSearchEntriesRpc,
