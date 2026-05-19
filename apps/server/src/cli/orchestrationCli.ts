@@ -32,6 +32,7 @@ import { CommsRepository, type CommsRepositoryShape } from "../persistence/Servi
 import { RepositoryIdentityResolverLive } from "../project/Layers/RepositoryIdentityResolver.ts";
 import {
   clearPersistedServerRuntimeState,
+  isPersistedServerRuntimeStateProcessAlive,
   readPersistedServerRuntimeState,
 } from "../serverRuntimeState.ts";
 import { WorkspacePathsLive } from "../workspace/Layers/WorkspacePaths.ts";
@@ -165,7 +166,10 @@ const tryResolveLiveServer = (
       return Option.some(attempted.value);
     }
 
-    yield* clearPersistedServerRuntimeState(serverRuntimeStatePath);
+    const processAlive = yield* isPersistedServerRuntimeStateProcessAlive(runtimeState.value);
+    if (!processAlive) {
+      yield* clearPersistedServerRuntimeState(serverRuntimeStatePath);
+    }
     return Option.none<{ readonly origin: string }>();
   });
 

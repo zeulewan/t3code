@@ -59,6 +59,24 @@ export const clearPersistedServerRuntimeState = (path: string) =>
     yield* fs.remove(path, { force: true }).pipe(Effect.ignore({ log: true }));
   });
 
+export const isPersistedServerRuntimeStateProcessAlive = (
+  state: PersistedServerRuntimeState,
+): Effect.Effect<boolean> =>
+  Effect.sync(() => {
+    if (state.pid <= 0) return false;
+
+    try {
+      process.kill(state.pid, 0);
+      return true;
+    } catch (cause) {
+      const code =
+        cause !== null && typeof cause === "object" && "code" in cause
+          ? (cause as { readonly code?: unknown }).code
+          : undefined;
+      return code === "EPERM";
+    }
+  });
+
 export const readPersistedServerRuntimeState = (path: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
