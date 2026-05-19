@@ -1414,6 +1414,47 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         await removeProject(member);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error removing project.";
+        if (message.includes("cannot be deleted without force=true")) {
+          const latestProjectThreads = selectSidebarThreadsForProjectRefs(useStore.getState(), [
+            memberProjectRef,
+          ]);
+          const confirmedForce = await api.dialogs.confirm(
+            [
+              `Remove project "${member.name}" and force-delete its thread history?`,
+              `Path: ${member.cwd}`,
+              ...(member.environmentLabel ? [`Environment: ${member.environmentLabel}`] : []),
+              latestProjectThreads.length > 0
+                ? `Detected ${latestProjectThreads.length} thread${
+                    latestProjectThreads.length === 1 ? "" : "s"
+                  } in this project.`
+                : "The backend reports this project is not empty.",
+              "This action cannot be undone.",
+            ].join("\n"),
+          );
+          if (!confirmedForce) {
+            return;
+          }
+          try {
+            await removeProject(member, { force: true });
+            return;
+          } catch (forceError) {
+            const forceMessage =
+              forceError instanceof Error ? forceError.message : "Unknown error removing project.";
+            console.error("Failed to force-remove project", {
+              projectId: member.id,
+              environmentId: member.environmentId,
+              error: forceError,
+            });
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: `Failed to remove "${member.name}"`,
+                description: forceMessage,
+              }),
+            );
+            return;
+          }
+        }
         console.error("Failed to remove project", {
           projectId: member.id,
           environmentId: member.environmentId,

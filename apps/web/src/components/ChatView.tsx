@@ -3426,6 +3426,62 @@ export default function ChatView(props: ChatViewProps) {
       settings,
     ],
   );
+  const onCodexSessionResume = useCallback(
+    async (input: { providerInstanceId: ProviderInstanceId; providerThreadId: string }) => {
+      if (!activeProject) {
+        throw new Error("Select a project before importing a Codex session.");
+      }
+      if (activeProject.environmentId !== primaryEnvironmentId) {
+        throw new Error("Codex session import is only available for the local environment.");
+      }
+      const api = readLocalApi();
+      if (!api) {
+        throw new Error("Local backend API is unavailable.");
+      }
+      const sendCtx = composerRef.current?.getSendContext();
+      const selectedModelSelection = sendCtx?.selectedModelSelection;
+      const selectedModel =
+        selectedModelSelection?.instanceId === input.providerInstanceId
+          ? selectedModelSelection.model
+          : undefined;
+      const resolvedModel = resolveAppModelSelectionForInstance(
+        input.providerInstanceId,
+        settings,
+        providerStatuses,
+        selectedModel,
+      );
+      if (!resolvedModel) {
+        throw new Error(`No selectable Codex model found for '${input.providerInstanceId}'.`);
+      }
+      const result = await api.server.importCodexSession({
+        providerInstanceId: input.providerInstanceId,
+        providerThreadId: input.providerThreadId,
+        projectId: activeProject.id,
+        modelSelection: {
+          instanceId: input.providerInstanceId,
+          model: resolvedModel,
+        },
+        runtimeMode,
+        interactionMode,
+      });
+      await navigate({
+        to: "/$environmentId/$threadId",
+        params: {
+          environmentId: activeProject.environmentId,
+          threadId: result.threadId,
+        },
+      });
+    },
+    [
+      activeProject,
+      interactionMode,
+      navigate,
+      primaryEnvironmentId,
+      providerStatuses,
+      runtimeMode,
+      settings,
+    ],
+  );
   const onEnvModeChange = useCallback(
     (mode: DraftThreadEnvMode) => {
       if (canOverrideServerThreadEnvMode) {
@@ -3668,6 +3724,7 @@ export default function ChatView(props: ChatViewProps) {
                     onChangeActivePendingUserInputCustomAnswer
                   }
                   onProviderModelSelect={onProviderModelSelect}
+                  onCodexSessionResume={onCodexSessionResume}
                   toggleInteractionMode={toggleInteractionMode}
                   handleRuntimeModeChange={handleRuntimeModeChange}
                   handleInteractionModeChange={handleInteractionModeChange}

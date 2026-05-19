@@ -1,11 +1,12 @@
 import {
   type ProviderInstanceId,
   type ProviderDriverKind,
+  type CodexSessionSummary,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 import { resolveSelectableModel } from "@t3tools/shared/model";
 import { memo, useMemo, useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { SearchIcon } from "lucide-react";
+import { ArrowLeftIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import { ModelListRow } from "./ModelListRow";
 import { ModelPickerSidebar } from "./ModelPickerSidebar";
 import { isModelPickerNewModel } from "./modelPickerModelHighlights";
@@ -21,8 +22,11 @@ import {
 import { useSettings, useUpdateSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { TooltipProvider } from "../ui/tooltip";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { providerModelKey, sortProviderModelItems } from "../../modelOrdering";
+import { readLocalApi } from "../../localApi";
 
 type ModelPickerItem = {
   slug: string;
@@ -80,8 +84,13 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
    */
   modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
   terminalOpen: boolean;
+  codexSessionResumeCwd?: string;
   onRequestClose?: () => void;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
+  onCodexSessionResume?: (input: {
+    providerInstanceId: ProviderInstanceId;
+    providerThreadId: string;
+  }) => Promise<void> | void;
 }) {
   const {
     keybindings: providedKeybindings,
@@ -104,6 +113,13 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       return favorites.length > 0 ? "favorites" : props.activeInstanceId;
     },
   );
+  const [codexSessionPanelOpen, setCodexSessionPanelOpen] = useState(false);
+  const [codexSessionFolder, setCodexSessionFolder] = useState(props.codexSessionResumeCwd ?? "");
+  const [codexSessionAllFolders, setCodexSessionAllFolders] = useState(false);
+  const [codexSessions, setCodexSessions] = useState<ReadonlyArray<CodexSessionSummary>>([]);
+  const [codexSessionsLoading, setCodexSessionsLoading] = useState(false);
+  const [codexSessionError, setCodexSessionError] = useState<string | null>(null);
+  const [importingCodexThreadId, setImportingCodexThreadId] = useState<string | null>(null);
   const keybindings = useMemo<ResolvedKeybindingsConfig>(
     () => providedKeybindings ?? [],
     [providedKeybindings],
@@ -156,6 +172,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     () => new Map(instanceEntries.map((entry) => [entry.instanceId, entry])),
     [instanceEntries],
   );
+  const selectedProviderEntry =
+    selectedInstanceId === "favorites"
+      ? entryByInstanceId.get(props.activeInstanceId)
+      : entryByInstanceId.get(selectedInstanceId);
+  const canResumeCodexSession =
+    props.onCodexSessionResume !== undefined && selectedProviderEntry?.driverKind === "codex";
   const matchesLockedProvider = useCallback(
     (entry: Pick<ProviderInstanceEntry, "driverKind" | "continuationGroupKey">): boolean => {
       if (props.lockedProvider === null) return true;
@@ -404,6 +426,70 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     (): string[] => flatModels.map((model) => `${model.instanceId}:${model.slug}`),
     [flatModels],
   );
+
+  useEffect(() => {
+    setCodexSessionFolder(props.codexSessionResumeCwd ?? "");
+  }, [props.codexSessionResumeCwd]);
+
+  useEffect(() => {
+    setCodexSessionPanelOpen(false);
+    setCodexSessions([]);
+    setCodexSessionError(null);
+  }, [selectedProviderEntry?.instanceId]);
+
+  const loadCodexSessions = useCallback(async () => {
+    if (!selectedProviderEntry || selectedProviderEntry.driverKind !== "codex") return;
+    const api = readLocalApi();
+    if (!api) {
+      setCodexSessionError("Local backend API is unavailable.");
+      return;
+    }
+    setCodexSessionsLoading(true);
+    setCodexSessionError(null);
+    try {
+      const result = await api.server.listCodexSessions({
+        providerInstanceId: selectedProviderEntry.instanceId,
+        cwd: codexSessionAllFolders ? null : codexSessionFolder,
+        allFolders: codexSessionAllFolders,
+        limit: 50,
+      });
+      setCodexSessions(result.sessions);
+    } catch (error) {
+      setCodexSessionError(
+        error instanceof Error ? error.message : "Failed to list Codex sessions.",
+      );
+    } finally {
+      setCodexSessionsLoading(false);
+    }
+  }, [codexSessionAllFolders, codexSessionFolder, selectedProviderEntry]);
+
+  useEffect(() => {
+    if (!codexSessionPanelOpen) return;
+    void loadCodexSessions();
+  }, [codexSessionPanelOpen, loadCodexSessions]);
+
+  const handleResumeCodexSession = useCallback(
+    async (session: CodexSessionSummary) => {
+      if (!selectedProviderEntry || !props.onCodexSessionResume) return;
+      setImportingCodexThreadId(session.providerThreadId);
+      setCodexSessionError(null);
+      try {
+        await props.onCodexSessionResume({
+          providerInstanceId: selectedProviderEntry.instanceId,
+          providerThreadId: session.providerThreadId,
+        });
+        props.onRequestClose?.();
+      } catch (error) {
+        setCodexSessionError(
+          error instanceof Error ? error.message : "Failed to import Codex session.",
+        );
+      } finally {
+        setImportingCodexThreadId(null);
+      }
+    },
+    [props, selectedProviderEntry],
+  );
+
   const filteredModelKeys = useMemo(
     (): string[] => filteredModels.map((model) => `${model.instanceId}:${model.slug}`),
     [filteredModels],
@@ -568,79 +654,199 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               isLocked && !showLockedInstanceSidebar ? "min-w-0" : showSidebar && "border-l",
             )}
           >
-            {/* Search bar */}
-            <div className="border-b px-3 py-2">
-              <ComboboxInput
-                ref={searchInputRef}
-                className="[&_input]:font-sans rounded-md"
-                inputClassName="border-0 shadow-none ring-0 focus-visible:ring-0"
-                placeholder="Search models..."
-                showTrigger={false}
-                startAddon={<SearchIcon className="size-4 shrink-0 text-muted-foreground/50" />}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    props.onRequestClose?.();
-                    return;
-                  }
-                  if (e.key === "Enter" && highlightedModelKeyRef.current) {
-                    (
-                      e as typeof e & { preventBaseUIHandler?: () => void }
-                    ).preventBaseUIHandler?.();
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const { instanceId, slug } = splitInstanceModelKey(
-                      highlightedModelKeyRef.current,
-                    );
-                    handleModelSelect(slug, instanceId);
-                    return;
-                  }
-                  e.stopPropagation();
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
-                size="sm"
-              />
-            </div>
-
-            {/* Model list */}
-            <div
-              ref={listRegionRef}
-              className="relative min-h-0 flex-1 before:pointer-events-none before:absolute before:inset-0 before:bg-muted/40"
-            >
-              <ComboboxList className="model-picker-list size-full divide-y px-2 py-1">
-                {filteredModelKeys.map((modelKey, index) => {
-                  const model = filteredModelByKey.get(modelKey);
-                  if (!model) {
-                    return null;
-                  }
-                  return (
-                    <ModelListRow
-                      key={modelKey}
-                      index={index}
-                      model={model}
-                      instanceId={model.instanceId}
-                      driverKind={model.driverKind}
-                      providerDisplayName={model.instanceDisplayName}
-                      providerAccentColor={model.instanceAccentColor}
-                      isFavorite={favoritesSet.has(modelKey)}
-                      showProvider={!isLocked || showLockedInstanceSidebar}
-                      preferShortName={!isLocked}
-                      useTriggerLabel={isLocked && !showLockedInstanceSidebar}
-                      showNewBadge={isModelPickerNewModel(model.driverKind, model.slug)}
-                      jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
-                      onToggleFavorite={() => toggleFavorite(model.instanceId, model.slug)}
+            {codexSessionPanelOpen ? (
+              <div className="space-y-2 border-b px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 px-2"
+                    onClick={() => setCodexSessionPanelOpen(false)}
+                  >
+                    <ArrowLeftIcon className="size-4" />
+                  </Button>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">Resume Codex session</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {selectedProviderEntry?.displayName ?? "Codex"}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 px-2"
+                    disabled={codexSessionsLoading}
+                    onClick={() => void loadCodexSessions()}
+                  >
+                    <RefreshCwIcon
+                      className={cn("size-4", codexSessionsLoading ? "animate-spin" : undefined)}
                     />
-                  );
-                })}
-              </ComboboxList>
-            </div>
-            <ComboboxEmpty className="not-empty:py-6 empty:h-0 text-xs font-normal leading-snug">
-              No models found
-            </ComboboxEmpty>
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    className="h-8 text-xs"
+                    disabled={codexSessionAllFolders}
+                    placeholder="Filter by folder"
+                    value={codexSessionFolder}
+                    onChange={(event) => setCodexSessionFolder(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void loadCodexSessions();
+                      }
+                      event.stopPropagation();
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={codexSessionAllFolders ? "default" : "outline"}
+                    className="h-8 shrink-0 px-2 text-xs"
+                    onClick={() => setCodexSessionAllFolders((value) => !value)}
+                  >
+                    All folders
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="border-b px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <ComboboxInput
+                    ref={searchInputRef}
+                    className="[&_input]:font-sans rounded-md"
+                    inputClassName="border-0 shadow-none ring-0 focus-visible:ring-0"
+                    placeholder="Search models..."
+                    showTrigger={false}
+                    startAddon={<SearchIcon className="size-4 shrink-0 text-muted-foreground/50" />}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        props.onRequestClose?.();
+                        return;
+                      }
+                      if (e.key === "Enter" && highlightedModelKeyRef.current) {
+                        (
+                          e as typeof e & { preventBaseUIHandler?: () => void }
+                        ).preventBaseUIHandler?.();
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const { instanceId, slug } = splitInstanceModelKey(
+                          highlightedModelKeyRef.current,
+                        );
+                        handleModelSelect(slug, instanceId);
+                        return;
+                      }
+                      e.stopPropagation();
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    size="sm"
+                  />
+                  {canResumeCodexSession ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 shrink-0 px-2 text-xs"
+                      onClick={() => setCodexSessionPanelOpen(true)}
+                    >
+                      Resume session
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            )}
+
+            {codexSessionPanelOpen ? (
+              <div className="min-h-0 flex-1 overflow-y-auto bg-muted/30 p-2">
+                {codexSessionError ? (
+                  <div className="mb-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    {codexSessionError}
+                  </div>
+                ) : null}
+                {codexSessionsLoading && codexSessions.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                    Loading Codex sessions...
+                  </div>
+                ) : null}
+                {!codexSessionsLoading && codexSessions.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                    No Codex sessions found.
+                  </div>
+                ) : null}
+                <div className="space-y-1">
+                  {codexSessions.map((session) => (
+                    <button
+                      key={session.providerThreadId}
+                      type="button"
+                      className="w-full rounded-md border bg-background/80 px-3 py-2 text-left text-sm hover:bg-accent disabled:cursor-wait disabled:opacity-60"
+                      disabled={importingCodexThreadId !== null}
+                      onClick={() => void handleResumeCodexSession(session)}
+                    >
+                      <div className="flex min-w-0 items-center justify-between gap-3">
+                        <span className="min-w-0 truncate font-medium">
+                          {session.name || session.preview || session.providerThreadId}
+                        </span>
+                        <span className="shrink-0 text-[11px] text-muted-foreground">
+                          {importingCodexThreadId === session.providerThreadId
+                            ? "Importing"
+                            : new Date(session.updatedAt * 1000).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                        {session.preview || "No preview"}
+                      </div>
+                      <div className="mt-1 truncate text-[11px] text-muted-foreground/80">
+                        {session.cwd}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                <div
+                  ref={listRegionRef}
+                  className="relative min-h-0 flex-1 before:pointer-events-none before:absolute before:inset-0 before:bg-muted/40"
+                >
+                  <ComboboxList className="model-picker-list size-full divide-y px-2 py-1">
+                    {filteredModelKeys.map((modelKey, index) => {
+                      const model = filteredModelByKey.get(modelKey);
+                      if (!model) {
+                        return null;
+                      }
+                      return (
+                        <ModelListRow
+                          key={modelKey}
+                          index={index}
+                          model={model}
+                          instanceId={model.instanceId}
+                          driverKind={model.driverKind}
+                          providerDisplayName={model.instanceDisplayName}
+                          providerAccentColor={model.instanceAccentColor}
+                          isFavorite={favoritesSet.has(modelKey)}
+                          showProvider={!isLocked || showLockedInstanceSidebar}
+                          preferShortName={!isLocked}
+                          useTriggerLabel={isLocked && !showLockedInstanceSidebar}
+                          showNewBadge={isModelPickerNewModel(model.driverKind, model.slug)}
+                          jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
+                          onToggleFavorite={() => toggleFavorite(model.instanceId, model.slug)}
+                        />
+                      );
+                    })}
+                  </ComboboxList>
+                </div>
+                <ComboboxEmpty className="not-empty:py-6 empty:h-0 text-xs font-normal leading-snug">
+                  No models found
+                </ComboboxEmpty>
+              </>
+            )}
           </div>
         </Combobox>
       </div>

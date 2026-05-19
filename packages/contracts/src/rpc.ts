@@ -18,6 +18,13 @@ import {
   CommsUpsertActorInput,
 } from "./comms.ts";
 import {
+  CodexSessionError,
+  CodexSessionImportInput,
+  CodexSessionImportResult,
+  CodexSessionListInput,
+  CodexSessionListResult,
+} from "./codexSessions.ts";
+import {
   FilesystemBrowseInput,
   FilesystemBrowseResult,
   FilesystemBrowseError,
@@ -125,6 +132,10 @@ export const WS_METHODS = {
   commsListInbox: "comms.listInbox",
   commsListConversationMessages: "comms.listConversationMessages",
   commsSetDeliveryStatus: "comms.setDeliveryStatus",
+
+  // Codex native session browser/import methods
+  codexSessionsList: "codex.sessions.list",
+  codexSessionsImport: "codex.sessions.import",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -236,6 +247,18 @@ export const WsCommsSetDeliveryStatusRpc = Rpc.make(WS_METHODS.commsSetDeliveryS
   payload: CommsSetDeliveryStatusInput,
   success: CommsDelivery,
   error: CommsError,
+});
+
+export const WsCodexSessionsListRpc = Rpc.make(WS_METHODS.codexSessionsList, {
+  payload: CodexSessionListInput,
+  success: CodexSessionListResult,
+  error: CodexSessionError,
+});
+
+export const WsCodexSessionsImportRpc = Rpc.make(WS_METHODS.codexSessionsImport, {
+  payload: CodexSessionImportInput,
+  success: CodexSessionImportResult,
+  error: CodexSessionError,
 });
 
 export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProviders, {
@@ -546,6 +569,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsCommsListInboxRpc,
   WsCommsListConversationMessagesRpc,
   WsCommsSetDeliveryStatusRpc,
+  WsCodexSessionsListRpc,
+  WsCodexSessionsImportRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsWriteFileRpc,
   WsShellOpenInEditorRpc,

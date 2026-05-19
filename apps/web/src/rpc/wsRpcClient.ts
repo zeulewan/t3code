@@ -127,6 +127,8 @@ export interface WsRpcClient {
     readonly updateSettings: (
       patch: ServerSettingsPatch,
     ) => ReturnType<RpcUnaryMethod<typeof WS_METHODS.serverUpdateSettings>>;
+    readonly listCodexSessions: RpcUnaryMethod<typeof WS_METHODS.codexSessionsList>;
+    readonly importCodexSession: RpcUnaryMethod<typeof WS_METHODS.codexSessionsImport>;
     readonly discoverSourceControl: RpcUnaryNoArgMethod<
       typeof WS_METHODS.serverDiscoverSourceControl
     >;
@@ -257,6 +259,10 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
       getSettings: () => transport.request((client) => client[WS_METHODS.serverGetSettings]({})),
       updateSettings: (patch) =>
         transport.request((client) => client[WS_METHODS.serverUpdateSettings]({ patch })),
+      listCodexSessions: (input) =>
+        transport.request((client) => client[WS_METHODS.codexSessionsList](input)),
+      importCodexSession: (input) =>
+        transport.request((client) => client[WS_METHODS.codexSessionsImport](input)),
       discoverSourceControl: () =>
         transport.request((client) => client[WS_METHODS.serverDiscoverSourceControl]({})),
       getTraceDiagnostics: () =>

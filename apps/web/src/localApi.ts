@@ -143,6 +143,14 @@ function createBrowserLocalApi(rpcClient?: WsRpcClient): LocalApi {
         rpcClient
           ? rpcClient.server.updateSettings(patch)
           : Promise.reject(unavailableLocalBackendError()),
+      listCodexSessions: (input) =>
+        rpcClient
+          ? rpcClient.server.listCodexSessions(input)
+          : Promise.reject(unavailableLocalBackendError()),
+      importCodexSession: (input) =>
+        rpcClient
+          ? rpcClient.server.importCodexSession(input)
+          : Promise.reject(unavailableLocalBackendError()),
       discoverSourceControl: () =>
         rpcClient
           ? rpcClient.server.discoverSourceControl()
