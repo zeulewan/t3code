@@ -11,6 +11,7 @@ import {
   CommsSendMessageResult,
   CommsSetDeliveryStatusInput,
   CommsUpsertActorInput,
+  ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
@@ -28,6 +29,11 @@ export const GetCommsActorByHandleInput = Schema.Struct({
   handle: CommsActor.fields.handle,
 });
 export type GetCommsActorByHandleInput = typeof GetCommsActorByHandleInput.Type;
+
+export const GetCommsActorByThreadIdInput = Schema.Struct({
+  threadId: ThreadId,
+});
+export type GetCommsActorByThreadIdInput = typeof GetCommsActorByThreadIdInput.Type;
 
 export interface CommsRepositoryShape {
   readonly upsertActor: (

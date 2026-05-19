@@ -9,7 +9,10 @@ import {
   CommsMessage,
   CommsMessageId,
   CommsMessageWithDelivery,
+  ModelSelection,
+  ProjectId,
   CommsSendMessageResult,
+  ThreadId,
   type CommsActorStatus,
   type CommsConversationKind,
   type CommsMetadata,
@@ -23,11 +26,13 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 import * as Struct from "effect/Struct";
 
+import { makeThreadCommsHandle } from "../../commsHandles.ts";
 import { toPersistenceSqlError } from "../Errors.ts";
 import {
   CommsRepository,
   GetCommsActorByHandleInput,
   GetCommsActorByIdInput,
+  GetCommsActorByThreadIdInput,
   type CommsRepositoryShape,
 } from "../Services/Comms.ts";
 
@@ -52,6 +57,12 @@ const CommsInboxRow = Schema.Struct({
   delivery: Schema.fromJsonString(CommsDelivery),
   conversation: Schema.fromJsonString(CommsConversation),
 });
+const ProjectionThreadActorSourceRow = Schema.Struct({
+  threadId: ThreadId,
+  projectId: ProjectId,
+  title: Schema.String,
+  modelSelection: Schema.fromJsonString(ModelSelection),
+});
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
@@ -61,15 +72,6 @@ const makeMessageId = () => CommsMessageId.make(crypto.randomUUID());
 const makeDeliveryId = () => CommsDeliveryId.make(crypto.randomUUID());
 
 const normalizeMetadata = (metadata: CommsMetadata | undefined) => metadata ?? {};
-
-const toMessageWithDelivery = (
-  row: Schema.Schema.Type<typeof CommsInboxRow>,
-): CommsMessageWithDelivery => ({
-  message: row.message,
-  sender: row.sender,
-  delivery: row.delivery,
-  conversation: row.conversation,
-});
 
 function deriveConversationKind(recipientCount: number): CommsConversationKind {
   return recipientCount > 1 ? "group" : "dm";
@@ -186,6 +188,49 @@ const makeCommsRepository = Effect.gen(function* () {
       `,
   });
 
+  const getActorByThreadIdRow = SqlSchema.findOneOption({
+    Request: GetCommsActorByThreadIdInput,
+    Result: CommsActorDbRow,
+    execute: ({ threadId }) =>
+      sql`
+        SELECT
+          actor_id AS "actorId",
+          kind,
+          handle,
+          display_name AS "displayName",
+          status,
+          project_id AS "projectId",
+          thread_id AS "threadId",
+          provider_instance_id AS "providerInstanceId",
+          model,
+          metadata_json AS "metadata",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM comms_actors
+        WHERE thread_id = ${threadId}
+          AND kind = 'agent'
+        ORDER BY created_at ASC, actor_id ASC
+        LIMIT 1
+      `,
+  });
+
+  const getProjectionThreadActorSourceRow = SqlSchema.findOneOption({
+    Request: Schema.Struct({ threadId: ThreadId }),
+    Result: ProjectionThreadActorSourceRow,
+    execute: ({ threadId }) =>
+      sql`
+        SELECT
+          thread_id AS "threadId",
+          project_id AS "projectId",
+          title,
+          model_selection_json AS "modelSelection"
+        FROM projection_threads
+        WHERE thread_id = ${threadId}
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+  });
+
   const listActorRows = SqlSchema.findAll({
     Request: Schema.Struct({
       projectId: CommsActor.fields.projectId,
@@ -211,6 +256,40 @@ const makeCommsRepository = Effect.gen(function* () {
         WHERE (${projectId} IS NULL OR project_id = ${projectId})
           AND (${includeInactive ? 1 : 0} = 1 OR status = 'active')
         ORDER BY handle ASC, actor_id ASC
+      `,
+  });
+
+  const updateActorByIdRow = SqlSchema.findOne({
+    Request: CommsActor,
+    Result: CommsActorDbRow,
+    execute: (actor) =>
+      sql`
+        UPDATE comms_actors
+        SET
+          kind = ${actor.kind},
+          handle = ${actor.handle},
+          display_name = ${actor.displayName},
+          status = ${actor.status},
+          project_id = ${actor.projectId},
+          thread_id = ${actor.threadId},
+          provider_instance_id = ${actor.providerInstanceId},
+          model = ${actor.model},
+          metadata_json = ${JSON.stringify(actor.metadata)},
+          updated_at = ${actor.updatedAt}
+        WHERE actor_id = ${actor.actorId}
+        RETURNING
+          actor_id AS "actorId",
+          kind,
+          handle,
+          display_name AS "displayName",
+          status,
+          project_id AS "projectId",
+          thread_id AS "threadId",
+          provider_instance_id AS "providerInstanceId",
+          model,
+          metadata_json AS "metadata",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
       `,
   });
 
@@ -574,15 +653,59 @@ const makeCommsRepository = Effect.gen(function* () {
       `,
   });
 
+  const deriveActorFromThread = (actor: CommsActor) =>
+    Effect.gen(function* () {
+      if (actor.kind !== "agent" || actor.threadId === null) {
+        return actor;
+      }
+
+      const thread = yield* getProjectionThreadActorSourceRow({ threadId: actor.threadId });
+      if (Option.isNone(thread)) {
+        return actor;
+      }
+
+      return {
+        ...actor,
+        handle: makeThreadCommsHandle({
+          title: thread.value.title,
+          threadId: thread.value.threadId,
+        }),
+        displayName: thread.value.title,
+        projectId: thread.value.projectId,
+        providerInstanceId: thread.value.modelSelection.instanceId,
+        model: thread.value.modelSelection.model,
+      } satisfies CommsActor;
+    });
+
+  const toMessageWithDelivery = (row: Schema.Schema.Type<typeof CommsInboxRow>) =>
+    deriveActorFromThread(row.sender).pipe(
+      Effect.map(
+        (sender): CommsMessageWithDelivery => ({
+          message: row.message,
+          sender,
+          delivery: row.delivery,
+          conversation: row.conversation,
+        }),
+      ),
+    );
+
   const upsertActor: CommsRepositoryShape["upsertActor"] = (input) =>
     Effect.gen(function* () {
-      const existing = yield* getActorByHandleRow({ handle: input.handle });
+      const existingByThread =
+        input.kind === "agent" && input.threadId !== undefined && input.threadId !== null
+          ? yield* getActorByThreadIdRow({ threadId: input.threadId })
+          : Option.none<CommsActor>();
+      const existingByHandle = yield* getActorByHandleRow({ handle: input.handle });
       const now = yield* nowIso;
-      const existingActor = Option.getOrNull(existing);
+      const isThreadBackedAgent =
+        input.kind === "agent" && input.threadId !== undefined && input.threadId !== null;
+      const existingActor =
+        Option.getOrNull(existingByThread) ??
+        (isThreadBackedAgent ? null : Option.getOrNull(existingByHandle));
       const actor: CommsActor = {
         actorId: input.actorId ?? existingActor?.actorId ?? makeActorId(),
         kind: input.kind,
-        handle: input.handle,
+        handle: isThreadBackedAgent ? `thread-${input.threadId}` : input.handle,
         displayName: input.displayName ?? existingActor?.displayName ?? input.handle,
         status: input.status ?? existingActor?.status ?? ("active" satisfies CommsActorStatus),
         projectId: input.projectId ?? existingActor?.projectId ?? null,
@@ -593,24 +716,56 @@ const makeCommsRepository = Effect.gen(function* () {
         createdAt: existingActor?.createdAt ?? now,
         updatedAt: now,
       };
-      return yield* upsertActorRow(actor);
+      const saved =
+        Option.isSome(existingByThread) ||
+        (input.actorId !== undefined && existingActor?.actorId === input.actorId)
+          ? yield* updateActorByIdRow(actor)
+          : yield* upsertActorRow(actor);
+      return yield* deriveActorFromThread(saved);
     }).pipe(Effect.mapError(toPersistenceSqlError("CommsRepository.upsertActor:query")));
 
   const getActorById: CommsRepositoryShape["getActorById"] = (input) =>
     getActorByIdRow(input).pipe(
+      Effect.flatMap((actor) =>
+        Option.isSome(actor)
+          ? deriveActorFromThread(actor.value).pipe(Effect.map(Option.some))
+          : Effect.succeed(Option.none<CommsActor>()),
+      ),
       Effect.mapError(toPersistenceSqlError("CommsRepository.getActorById:query")),
     );
 
   const getActorByHandle: CommsRepositoryShape["getActorByHandle"] = (input) =>
-    getActorByHandleRow(input).pipe(
-      Effect.mapError(toPersistenceSqlError("CommsRepository.getActorByHandle:query")),
-    );
+    Effect.gen(function* () {
+      const normalizedHandle = input.handle.trim().toLowerCase();
+      const exactActor = Option.getOrNull(yield* getActorByHandleRow(input));
+      if (exactActor !== null) {
+        const actor = yield* deriveActorFromThread(exactActor);
+        if (actor.threadId === null || actor.handle.toLowerCase() === normalizedHandle) {
+          return Option.some(actor);
+        }
+      }
+
+      const actors = yield* listActorRows({ projectId: null, includeInactive: true });
+      for (const candidate of actors) {
+        const actor = yield* deriveActorFromThread(candidate);
+        if (actor.handle.toLowerCase() === normalizedHandle) {
+          return Option.some(actor);
+        }
+      }
+      return Option.none<CommsActor>();
+    }).pipe(Effect.mapError(toPersistenceSqlError("CommsRepository.getActorByHandle:query")));
 
   const listActors: CommsRepositoryShape["listActors"] = (input) =>
     listActorRows({
       projectId: input.projectId ?? null,
       includeInactive: input.includeInactive ?? false,
-    }).pipe(Effect.mapError(toPersistenceSqlError("CommsRepository.listActors:query")));
+    }).pipe(
+      Effect.flatMap((actors) => Effect.forEach(actors, deriveActorFromThread, { concurrency: 8 })),
+      Effect.map((actors) =>
+        actors.toSorted((left, right) => left.handle.localeCompare(right.handle)),
+      ),
+      Effect.mapError(toPersistenceSqlError("CommsRepository.listActors:query")),
+    );
 
   const sendMessage: CommsRepositoryShape["sendMessage"] = (input) =>
     Effect.gen(function* () {
@@ -694,7 +849,7 @@ const makeCommsRepository = Effect.gen(function* () {
       statuses: [...(input.statuses ?? [])],
       limit: input.limit ?? 50,
     }).pipe(
-      Effect.map((rows) => rows.map(toMessageWithDelivery)),
+      Effect.flatMap((rows) => Effect.forEach(rows, toMessageWithDelivery, { concurrency: 8 })),
       Effect.mapError(toPersistenceSqlError("CommsRepository.listInbox:query")),
     );
 
@@ -703,7 +858,7 @@ const makeCommsRepository = Effect.gen(function* () {
       conversationId: input.conversationId,
       limit: input.limit ?? 100,
     }).pipe(
-      Effect.map((rows) => rows.map(toMessageWithDelivery)),
+      Effect.flatMap((rows) => Effect.forEach(rows, toMessageWithDelivery, { concurrency: 8 })),
       Effect.mapError(toPersistenceSqlError("CommsRepository.listConversationMessages:query")),
     );
 
