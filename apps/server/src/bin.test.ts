@@ -419,8 +419,23 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
           );
           assert.isTrue(actorsOutput.output.includes("@test-agent"));
 
+          yield* runCliWithRuntime([
+            "agent",
+            "rename",
+            "test-agent",
+            "Renamed Agent",
+            "--base-dir",
+            baseDir,
+          ]);
+
+          const renamedActorsOutput = yield* captureStdout(
+            runCli(["comms", "actors", "--base-dir", baseDir]),
+          );
+          assert.isTrue(renamedActorsOutput.output.includes("@renamed-agent"));
+          assert.isFalse(renamedActorsOutput.output.includes("@test-agent"));
+
           const sendOutput = yield* captureStdout(
-            runCli(["agent", "send", "test-agent", "Status?", "--base-dir", baseDir]),
+            runCli(["agent", "send", "renamed-agent", "Status?", "--base-dir", baseDir]),
           );
           assert.isTrue(sendOutput.output.includes(`Sent turn to ${thread?.id}.`));
         }),
