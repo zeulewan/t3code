@@ -775,7 +775,8 @@ describe("GeneralSettingsPanel observability", () => {
       </AppAtomRegistryProvider>,
     );
 
-    await page.getByLabelText("Expand changed files by default").click();
+    await page.getByLabelText("Changed files default state").click();
+    await page.getByRole("option", { name: "Expanded" }).click();
 
     await vi.waitFor(() => {
       expect(setClientSettings).toHaveBeenCalledWith(

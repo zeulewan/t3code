@@ -216,6 +216,24 @@ describe("WsTransport (web instrumentation)", () => {
     await transport.dispose();
   });
 
+  it("treats a newly opened socket as heartbeat-fresh before the first pong", async () => {
+    const transport = createTransport("ws://localhost:3020");
+
+    await waitFor(() => {
+      expect(sockets).toHaveLength(1);
+    });
+
+    expect(transport.isHeartbeatFresh()).toBe(false);
+
+    getSocket().open();
+
+    await waitFor(() => {
+      expect(transport.isHeartbeatFresh()).toBe(true);
+    });
+
+    await transport.dispose();
+  });
+
   it("composes custom lifecycle handlers with default websocket state tracking", async () => {
     const onOpen = vi.fn();
     const onClose = vi.fn();

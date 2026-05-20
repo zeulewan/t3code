@@ -105,6 +105,11 @@ const TIMESTAMP_FORMAT_LABELS = {
   "24-hour": "24-hour",
 } as const;
 
+const CHANGED_FILES_DEFAULT_LABELS = {
+  collapsed: "Collapsed",
+  expanded: "Expanded",
+} as const;
+
 const UI_SCALE_OPTIONS = [
   { value: "x-small", label: "XS" },
   { value: "small", label: "Small" },
@@ -663,8 +668,8 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
-          title="Changed files"
-          description="Choose whether assistant changed-file trees start expanded or collapsed."
+          title="Changed files default"
+          description="Choose the starting state for assistant changed-file trees."
           resetAction={
             settings.changedFilesExpandedByDefault !==
             DEFAULT_UNIFIED_SETTINGS.changedFilesExpandedByDefault ? (
@@ -680,13 +685,32 @@ export function GeneralSettingsPanel() {
             ) : null
           }
           control={
-            <Switch
-              checked={settings.changedFilesExpandedByDefault}
-              onCheckedChange={(checked) =>
-                updateSettings({ changedFilesExpandedByDefault: Boolean(checked) })
-              }
-              aria-label="Expand changed files by default"
-            />
+            <Select
+              value={settings.changedFilesExpandedByDefault ? "expanded" : "collapsed"}
+              onValueChange={(value) => {
+                if (value === "expanded" || value === "collapsed") {
+                  updateSettings({ changedFilesExpandedByDefault: value === "expanded" });
+                }
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-40" aria-label="Changed files default state">
+                <SelectValue>
+                  {
+                    CHANGED_FILES_DEFAULT_LABELS[
+                      settings.changedFilesExpandedByDefault ? "expanded" : "collapsed"
+                    ]
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem hideIndicator value="collapsed">
+                  {CHANGED_FILES_DEFAULT_LABELS.collapsed}
+                </SelectItem>
+                <SelectItem hideIndicator value="expanded">
+                  {CHANGED_FILES_DEFAULT_LABELS.expanded}
+                </SelectItem>
+              </SelectPopup>
+            </Select>
           }
         />
 

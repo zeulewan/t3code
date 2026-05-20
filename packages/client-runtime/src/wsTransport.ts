@@ -70,6 +70,7 @@ export class WsTransport {
   private intentionalCloseDepth = 0;
   private nextSessionId = 0;
   private activeSessionId = 0;
+  private lastSocketOpenedAt: number | null = null;
   private lastHeartbeatPongAt: number | null = null;
   private readonly streamRequestStartListeners = new Set<
     (info: { readonly tag: string }) => void
@@ -227,6 +228,7 @@ export class WsTransport {
         // Ignore hook failures so reconnect can proceed.
       }
 
+      this.lastSocketOpenedAt = null;
       this.lastHeartbeatPongAt = null;
       const previousSession = this.session;
       this.session = this.createSession();
@@ -238,8 +240,10 @@ export class WsTransport {
   }
 
   isHeartbeatFresh(maxAgeMs = 15_000): boolean {
+    const now = performance.now();
     return (
-      this.lastHeartbeatPongAt !== null && performance.now() - this.lastHeartbeatPongAt <= maxAgeMs
+      (this.lastHeartbeatPongAt !== null && now - this.lastHeartbeatPongAt <= maxAgeMs) ||
+      (this.lastSocketOpenedAt !== null && now - this.lastSocketOpenedAt <= maxAgeMs)
     );
   }
 
@@ -276,6 +280,10 @@ export class WsTransport {
         this.disposed ||
         this.intentionalCloseDepth > 0 ||
         lifecycleHandlers?.isCloseIntentional?.() === true,
+      onOpen: () => {
+        this.lastSocketOpenedAt = performance.now();
+        lifecycleHandlers?.onOpen?.();
+      },
       onHeartbeatPong: () => {
         this.lastHeartbeatPongAt = performance.now();
         lifecycleHandlers?.onHeartbeatPong?.();
