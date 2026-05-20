@@ -62,6 +62,7 @@ export class WsTransport {
   private nextSessionId = 0;
   private activeSessionId = 0;
   private session: TransportSession;
+  private lastSocketOpenedAt = 0;
   private lastHeartbeatPongAt = 0;
   private readonly streamRequestStartListeners = new Set<(info: StreamRequestStartInfo) => void>();
 
@@ -208,6 +209,7 @@ export class WsTransport {
 
       clearAllTrackedRpcRequests();
       this.lastHeartbeatPongAt = 0;
+      this.lastSocketOpenedAt = 0;
       const previousSession = this.session;
       this.session = this.createSession();
       await this.closeSession(previousSession);
@@ -218,7 +220,11 @@ export class WsTransport {
   }
 
   isHeartbeatFresh(maxAgeMs = 15_000): boolean {
-    return this.lastHeartbeatPongAt > 0 && Date.now() - this.lastHeartbeatPongAt <= maxAgeMs;
+    const now = Date.now();
+    return (
+      (this.lastHeartbeatPongAt > 0 && now - this.lastHeartbeatPongAt <= maxAgeMs) ||
+      (this.lastSocketOpenedAt > 0 && now - this.lastSocketOpenedAt <= maxAgeMs)
+    );
   }
 
   async dispose() {
@@ -250,6 +256,10 @@ export class WsTransport {
             this.disposed ||
             this.intentionalCloseDepth > 0 ||
             this.lifecycleHandlers?.isCloseIntentional?.() === true,
+          onOpen: () => {
+            this.lastSocketOpenedAt = Date.now();
+            this.lifecycleHandlers?.onOpen?.();
+          },
           onHeartbeatPong: () => {
             this.lastHeartbeatPongAt = Date.now();
             this.lifecycleHandlers?.onHeartbeatPong?.();

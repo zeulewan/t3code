@@ -139,6 +139,7 @@ let lastBrowserResumeReconnectAt = Number.NEGATIVE_INFINITY;
 const THREAD_DETAIL_SUBSCRIPTION_IDLE_EVICTION_MS = 15 * 60 * 1000;
 const MAX_CACHED_THREAD_DETAIL_SUBSCRIPTIONS = 32;
 const BROWSER_RESUME_RECONNECT_COOLDOWN_MS = 2_000;
+const BROWSER_RESUME_RECONNECT_MIN_HIDDEN_MS = 5_000;
 const INITIAL_SERVER_CONFIG_SNAPSHOT_WAIT_MS = 150;
 const NOOP = () => undefined;
 const SSH_HTTP_STATUS_RE = /^\[ssh_http:(\d+)\]\s/u;
@@ -1477,7 +1478,14 @@ function stopActiveService() {
   activeService = null;
 }
 
-function reconnectEnvironmentConnectionsAfterBrowserResume(reason: string): void {
+function reconnectEnvironmentConnectionsAfterBrowserResume(
+  reason: string,
+  hiddenDurationMs: number | null,
+): void {
+  if (hiddenDurationMs !== null && hiddenDurationMs < BROWSER_RESUME_RECONNECT_MIN_HIDDEN_MS) {
+    return;
+  }
+
   const now = Date.now();
   if (now - lastBrowserResumeReconnectAt < BROWSER_RESUME_RECONNECT_COOLDOWN_MS) {
     return;
@@ -1509,15 +1517,18 @@ function subscribeBrowserResumeReconnects(): () => void {
       return;
     }
     if (document.visibilityState === "visible" && lastBrowserHiddenAt !== null) {
+      const hiddenDurationMs = Date.now() - lastBrowserHiddenAt;
       lastBrowserHiddenAt = null;
-      reconnectEnvironmentConnectionsAfterBrowserResume("visibilitychange");
+      reconnectEnvironmentConnectionsAfterBrowserResume("visibilitychange", hiddenDurationMs);
     }
   };
 
   const handlePageShow = (event: PageTransitionEvent) => {
     if (event.persisted || lastBrowserHiddenAt !== null) {
+      const hiddenDurationMs =
+        lastBrowserHiddenAt === null ? null : Date.now() - lastBrowserHiddenAt;
       lastBrowserHiddenAt = null;
-      reconnectEnvironmentConnectionsAfterBrowserResume("pageshow");
+      reconnectEnvironmentConnectionsAfterBrowserResume("pageshow", hiddenDurationMs);
     }
   };
 
