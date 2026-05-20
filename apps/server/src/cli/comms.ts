@@ -18,6 +18,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 
+import { makeThreadCommsHandle } from "../commsHandles.ts";
 import { projectLocationFlags } from "./config.ts";
 import {
   OrchestrationCliError,
@@ -102,12 +103,67 @@ function resolveProjectId(snapshot: OrchestrationReadModel, identifier: string) 
 
 const getActorByHandle = (context: OrchestrationCliContext, handle: string) =>
   Effect.gen(function* () {
-    const actor = yield* context.commsRepository.getActorByHandle({ handle });
+    const normalizedHandle = handle.replace(/^@/, "").trim();
+    const actor = yield* context.commsRepository.getActorByHandle({ handle: normalizedHandle });
     if (Option.isNone(actor)) {
-      return yield* new OrchestrationCliError({ message: `No comms actor found for @${handle}.` });
+      const inactiveThread = context.snapshot.threads.find(
+        (thread) =>
+          (thread.deletedAt !== null || thread.archivedAt !== null) &&
+          makeThreadCommsHandle({ title: thread.title, threadId: thread.id }).toLowerCase() ===
+            normalizedHandle.toLowerCase(),
+      );
+      if (inactiveThread) {
+        const state = inactiveThread.deletedAt !== null ? "deleted" : "archived";
+        return yield* new OrchestrationCliError({
+          message: `Comms actor @${normalizedHandle} points to ${state} thread ${inactiveThread.id} (${inactiveThread.title}). Rename or unarchive the intended live thread before sending.`,
+        });
+      }
+      return yield* new OrchestrationCliError({
+        message: `No comms actor found for @${normalizedHandle}.`,
+      });
     }
     return actor.value;
   });
+
+const requireActiveActorThread = (
+  context: OrchestrationCliContext,
+  actor: CommsActor,
+  role: "sender" | "recipient",
+) =>
+  Effect.gen(function* () {
+    if (actor.status !== "active") {
+      return yield* new OrchestrationCliError({
+        message: `Cannot send comms with inactive ${role} @${actor.handle}.`,
+      });
+    }
+    if (actor.kind !== "agent" || actor.threadId === null) {
+      return;
+    }
+
+    const thread = context.snapshot.threads.find((entry) => entry.id === actor.threadId) ?? null;
+    if (!thread) {
+      return yield* new OrchestrationCliError({
+        message: `Cannot send comms with ${role} @${actor.handle}: backing thread ${actor.threadId} is missing.`,
+      });
+    }
+    if (thread.deletedAt !== null) {
+      return yield* new OrchestrationCliError({
+        message: `Cannot send comms with ${role} @${actor.handle}: backing thread ${actor.threadId} is deleted.`,
+      });
+    }
+    if (thread.archivedAt !== null) {
+      return yield* new OrchestrationCliError({
+        message: `Cannot send comms with ${role} @${actor.handle}: backing thread ${actor.threadId} is archived.`,
+      });
+    }
+  });
+
+function inactiveThreadDeliveryError(threadId: string, thread: OrchestrationThread | null): string {
+  if (!thread) return `Target thread ${threadId} is missing.`;
+  if (thread.deletedAt !== null) return `Target thread ${threadId} is deleted.`;
+  if (thread.archivedAt !== null) return `Target thread ${threadId} is archived.`;
+  return `Target thread ${threadId} is unavailable.`;
+}
 
 function parseRecipientHandles(raw: string): ReadonlyArray<string> {
   return raw
@@ -196,8 +252,13 @@ const deliverToThreads = (
         continue;
       }
       const thread = context.snapshot.threads.find((entry) => entry.id === threadId) ?? null;
-      if (!thread || thread.deletedAt !== null) {
-        skipped += 1;
+      if (!thread || thread.deletedAt !== null || thread.archivedAt !== null) {
+        failed += 1;
+        yield* context.commsRepository.setDeliveryStatus({
+          deliveryId: delivery.deliveryId,
+          status: "failed",
+          error: inactiveThreadDeliveryError(threadId, thread),
+        });
         continue;
       }
 
@@ -314,6 +375,7 @@ const commsSendCommand = Command.make("send", {
     runWithOrchestrationCli(flags, (context: OrchestrationCliContext) =>
       Effect.gen(function* () {
         const sender = yield* getActorByHandle(context, flags.from.replace(/^@/, ""));
+        yield* requireActiveActorThread(context, sender, "sender");
         const recipientHandles = parseRecipientHandles(flags.to);
         if (recipientHandles.length === 0) {
           return yield* new OrchestrationCliError({
@@ -323,6 +385,10 @@ const commsSendCommand = Command.make("send", {
 
         const recipients = yield* Effect.all(
           recipientHandles.map((handle) => getActorByHandle(context, handle)),
+        );
+        yield* Effect.all(
+          recipients.map((recipient) => requireActiveActorThread(context, recipient, "recipient")),
+          { concurrency: 1 },
         );
         const [firstRecipient, ...restRecipients] = recipients.map((actor) => actor.actorId);
         if (!firstRecipient) {

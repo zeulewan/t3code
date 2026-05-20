@@ -140,4 +140,193 @@ layer("CommsRepository", (it) => {
       assert.equal(listedAfterResolve.filter((actor) => actor.handle === "sky").length, 1);
     }),
   );
+
+  it.effect("does not resolve archived projected thread titles as comms actors", () =>
+    Effect.gen(function* () {
+      const repository = yield* CommsRepository;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id,
+          title,
+          workspace_root,
+          default_model_selection_json,
+          scripts_json,
+          created_at,
+          updated_at,
+          deleted_at
+        )
+        VALUES (
+          'project-archived-river',
+          'Archived River Project',
+          '/tmp/archived-river-project',
+          '{"instanceId":"codex","model":"gpt-5.5"}',
+          '[]',
+          '2026-05-20T00:00:00.000Z',
+          '2026-05-20T00:00:00.000Z',
+          NULL
+        )
+      `;
+
+      yield* sql`
+        INSERT INTO projection_threads (
+          thread_id,
+          project_id,
+          title,
+          model_selection_json,
+          runtime_mode,
+          interaction_mode,
+          branch,
+          worktree_path,
+          latest_turn_id,
+          latest_user_message_at,
+          pending_approval_count,
+          pending_user_input_count,
+          has_actionable_proposed_plan,
+          created_at,
+          updated_at,
+          deleted_at,
+          archived_at
+        )
+        VALUES (
+          'thread-archived-river',
+          'project-archived-river',
+          'River',
+          '{"instanceId":"codex","model":"gpt-5.5"}',
+          'full-access',
+          'default',
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          0,
+          0,
+          0,
+          '2026-05-20T00:00:00.000Z',
+          '2026-05-20T00:00:00.000Z',
+          NULL,
+          '2026-05-20T01:00:00.000Z'
+        )
+      `;
+
+      const listedActors = yield* repository.listActors({});
+      assert.isFalse(listedActors.some((actor) => actor.handle === "river"));
+
+      const resolvedRiver = yield* repository.getActorByHandle({ handle: "river" });
+      assert.isTrue(Option.isNone(resolvedRiver));
+    }),
+  );
+
+  it.effect("marks stored actors inactive when their backing thread is archived", () =>
+    Effect.gen(function* () {
+      const repository = yield* CommsRepository;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id,
+          title,
+          workspace_root,
+          default_model_selection_json,
+          scripts_json,
+          created_at,
+          updated_at,
+          deleted_at
+        )
+        VALUES (
+          'project-stale-river',
+          'Stale River Project',
+          '/tmp/stale-river-project',
+          '{"instanceId":"codex","model":"gpt-5.5"}',
+          '[]',
+          '2026-05-20T00:00:00.000Z',
+          '2026-05-20T00:00:00.000Z',
+          NULL
+        )
+      `;
+
+      yield* sql`
+        INSERT INTO projection_threads (
+          thread_id,
+          project_id,
+          title,
+          model_selection_json,
+          runtime_mode,
+          interaction_mode,
+          branch,
+          worktree_path,
+          latest_turn_id,
+          latest_user_message_at,
+          pending_approval_count,
+          pending_user_input_count,
+          has_actionable_proposed_plan,
+          created_at,
+          updated_at,
+          deleted_at,
+          archived_at
+        )
+        VALUES (
+          'thread-stale-river',
+          'project-stale-river',
+          'River',
+          '{"instanceId":"codex","model":"gpt-5.5"}',
+          'full-access',
+          'default',
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          0,
+          0,
+          0,
+          '2026-05-20T00:00:00.000Z',
+          '2026-05-20T00:00:00.000Z',
+          NULL,
+          '2026-05-20T01:00:00.000Z'
+        )
+      `;
+
+      yield* sql`
+        INSERT INTO comms_actors (
+          actor_id,
+          kind,
+          handle,
+          display_name,
+          status,
+          project_id,
+          thread_id,
+          provider_instance_id,
+          model,
+          metadata_json,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          'actor-stale-river',
+          'agent',
+          'river',
+          'river',
+          'active',
+          'project-stale-river',
+          'thread-stale-river',
+          'codex',
+          'gpt-5.5',
+          '{}',
+          '2026-05-20T00:00:00.000Z',
+          '2026-05-20T00:00:00.000Z'
+        )
+      `;
+
+      const resolvedRiver = yield* repository.getActorByHandle({ handle: "river" });
+      assert.isTrue(Option.isNone(resolvedRiver));
+
+      const listedActors = yield* repository.listActors({});
+      assert.isFalse(listedActors.some((actor) => actor.handle === "river"));
+
+      const inactiveActors = yield* repository.listActors({ includeInactive: true });
+      const staleRiver = inactiveActors.find((actor) => actor.actorId === "actor-stale-river");
+      assert.equal(staleRiver?.status, "inactive");
+    }),
+  );
 });
