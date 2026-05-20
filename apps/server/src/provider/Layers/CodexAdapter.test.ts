@@ -103,6 +103,10 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
       }),
   );
 
+  public readonly setThreadTitleImpl = vi.fn(
+    (_title: string): Promise<void> => Promise.resolve(undefined),
+  );
+
   public readonly respondToRequestImpl = vi.fn(
     (_requestId: ApprovalRequestId, _decision: ProviderApprovalDecision): Promise<void> =>
       Promise.resolve(undefined),
@@ -139,6 +143,10 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
 
   rollbackThread(numTurns: number) {
     return Effect.promise(() => this.rollbackThreadImpl(numTurns));
+  }
+
+  setThreadTitle(title: string) {
+    return Effect.promise(() => this.setThreadTitleImpl(title));
   }
 
   respondToRequest(requestId: ApprovalRequestId, decision: ProviderApprovalDecision) {
@@ -270,6 +278,7 @@ validationLayer("CodexAdapterLive validation", (it) => {
       yield* adapter.startSession({
         provider: ProviderDriverKind.make("codex"),
         threadId: asThreadId("thread-1"),
+        title: "River",
         modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-5.3-codex", [
           { id: "fastMode", value: true },
         ]),
@@ -282,6 +291,7 @@ validationLayer("CodexAdapterLive validation", (it) => {
         model: "gpt-5.3-codex",
         providerInstanceId: ProviderInstanceId.make("codex"),
         serviceTier: "fast",
+        title: "River",
         threadId: asThreadId("thread-1"),
         runtimeMode: "full-access",
       });
@@ -323,6 +333,26 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
       assert.equal(result.failure._tag, "ProviderAdapterSessionNotFoundError");
       assert.equal(result.failure.provider, "codex");
       assert.equal(result.failure.threadId, "sess-missing");
+    }),
+  );
+
+  it.effect("routes thread title updates to the active runtime", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CodexAdapter;
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("sess-title"),
+        runtimeMode: "full-access",
+      });
+      const runtime = sessionRuntimeFactory.lastRuntime;
+      assert.ok(runtime);
+
+      yield* adapter.setThreadTitle({
+        threadId: asThreadId("sess-title"),
+        title: "Renamed from T3",
+      });
+
+      assert.deepStrictEqual(runtime.setThreadTitleImpl.mock.calls, [["Renamed from T3"]]);
     }),
   );
 

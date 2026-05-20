@@ -209,6 +209,7 @@ function makeFakeCodexAdapter(provider: ProviderDriverKind = CODEX_DRIVER) {
       sessionModelSwitch: "in-session",
     },
     startSession,
+    setThreadTitle: vi.fn(() => Effect.void),
     sendTurn,
     interruptTurn,
     respondToRequest,

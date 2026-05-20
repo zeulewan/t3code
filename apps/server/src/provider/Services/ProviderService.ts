@@ -20,6 +20,7 @@ import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
+  ProviderSetThreadTitleInput,
   ProviderStopSessionInput,
   ThreadId,
   ProviderTurnStartResult,
@@ -43,6 +44,13 @@ export interface ProviderServiceShape {
     threadId: ThreadId,
     input: ProviderSessionStartInput,
   ) => Effect.Effect<ProviderSession, ProviderServiceError>;
+
+  /**
+   * Set the provider-native user-facing title for an active provider thread.
+   */
+  readonly setThreadTitle: (
+    input: ProviderSetThreadTitleInput,
+  ) => Effect.Effect<void, ProviderServiceError>;
 
   /**
    * Send a provider turn.
