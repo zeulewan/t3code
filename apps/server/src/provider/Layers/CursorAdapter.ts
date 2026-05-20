@@ -1012,6 +1012,8 @@ export function makeCursorAdapter(
         yield* Deferred.succeed(pending.answers, answers);
       });
 
+    const setThreadTitle: CursorAdapterShape["setThreadTitle"] = () => Effect.void;
+
     const readThread: CursorAdapterShape["readThread"] = (threadId) =>
       Effect.gen(function* () {
         const ctx = yield* requireSession(threadId);
@@ -1067,6 +1069,7 @@ export function makeCursorAdapter(
       provider: PROVIDER,
       capabilities: { sessionModelSwitch: "in-session" },
       startSession,
+      setThreadTitle,
       sendTurn,
       interruptTurn,
       readThread,

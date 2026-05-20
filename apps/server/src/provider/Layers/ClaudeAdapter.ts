@@ -3233,6 +3233,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     yield* Deferred.succeed(pending.answers, answers);
   });
 
+  const setThreadTitle: ClaudeAdapterShape["setThreadTitle"] = () => Effect.void;
+
   const stopSession: ClaudeAdapterShape["stopSession"] = Effect.fn("stopSession")(
     function* (threadId) {
       const context = yield* requireSession(threadId);
@@ -3278,6 +3280,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       sessionModelSwitch: "in-session",
     },
     startSession,
+    setThreadTitle,
     sendTurn,
     interruptTurn,
     readThread,
