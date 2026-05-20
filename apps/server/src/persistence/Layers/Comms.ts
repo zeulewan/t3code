@@ -227,6 +227,7 @@ const makeCommsRepository = Effect.gen(function* () {
         FROM projection_threads
         WHERE thread_id = ${threadId}
           AND deleted_at IS NULL
+          AND archived_at IS NULL
         LIMIT 1
       `,
   });
@@ -681,7 +682,10 @@ const makeCommsRepository = Effect.gen(function* () {
 
       const thread = yield* getProjectionThreadActorSourceRow({ threadId: actor.threadId });
       if (Option.isNone(thread)) {
-        return actor;
+        return {
+          ...actor,
+          status: "inactive" as const,
+        };
       }
 
       return {
@@ -816,7 +820,10 @@ const makeCommsRepository = Effect.gen(function* () {
       const exactActor = Option.getOrNull(yield* getActorByHandleRow(input));
       if (exactActor !== null) {
         const actor = yield* deriveActorFromThread(exactActor);
-        if (actor.threadId === null || actor.handle.toLowerCase() === normalizedHandle) {
+        if (
+          actor.status === "active" &&
+          (actor.threadId === null || actor.handle.toLowerCase() === normalizedHandle)
+        ) {
           return Option.some(actor);
         }
       }
@@ -824,7 +831,7 @@ const makeCommsRepository = Effect.gen(function* () {
       const actors = yield* listActorRows({ projectId: null, includeInactive: true });
       for (const candidate of actors) {
         const actor = yield* deriveActorFromThread(candidate);
-        if (actor.handle.toLowerCase() === normalizedHandle) {
+        if (actor.status === "active" && actor.handle.toLowerCase() === normalizedHandle) {
           return Option.some(actor);
         }
       }
@@ -845,8 +852,12 @@ const makeCommsRepository = Effect.gen(function* () {
         includeInactive: input.includeInactive ?? false,
       });
       const actors = yield* Effect.forEach(actorRows, deriveActorFromThread, { concurrency: 8 });
+      const visibleActors =
+        input.includeInactive === true
+          ? actors
+          : actors.filter((actor) => actor.status === "active");
       const existingThreadIds = new Set(
-        actors.flatMap((actor) =>
+        visibleActors.flatMap((actor) =>
           actor.kind === "agent" && actor.threadId !== null ? [actor.threadId] : [],
         ),
       );
@@ -856,7 +867,7 @@ const makeCommsRepository = Effect.gen(function* () {
         .filter((thread) => !existingThreadIds.has(thread.threadId))
         .map((thread) => actorFromProjectionThreadSource(thread, now));
 
-      return [...actors, ...projectedActors].toSorted((left, right) =>
+      return [...visibleActors, ...projectedActors].toSorted((left, right) =>
         left.handle.localeCompare(right.handle),
       );
     }).pipe(Effect.mapError(toPersistenceSqlError("CommsRepository.listActors:query")));
