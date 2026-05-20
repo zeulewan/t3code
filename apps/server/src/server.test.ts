@@ -3517,6 +3517,71 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("treats duplicate thread archive requests as idempotent", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("thread-archive-duplicate");
+      const effects: string[] = [];
+      const dispatchedCommands: Array<OrchestrationCommand> = [];
+      const now = "2026-01-01T00:00:00.000Z";
+
+      yield* buildAppUnderTest({
+        layers: {
+          terminalManager: {
+            close: (input) =>
+              Effect.sync(() => {
+                effects.push(`terminal.close:${input.threadId}`);
+              }),
+          },
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => {
+                dispatchedCommands.push(command);
+                effects.push(`dispatch:${command.type}`);
+                return { sequence: dispatchedCommands.length };
+              }),
+          },
+          projectionSnapshotQuery: {
+            getSnapshotSequence: () => Effect.succeed({ snapshotSequence: 42 }),
+            getThreadShellById: () =>
+              Effect.succeed(
+                Option.some(
+                  makeDefaultOrchestrationThreadShell({
+                    id: threadId,
+                    updatedAt: now,
+                    archivedAt: "2026-01-01T00:01:00.000Z",
+                    session: {
+                      threadId,
+                      status: "stopped",
+                      providerName: "claudeAgent",
+                      runtimeMode: "full-access",
+                      activeTurnId: null,
+                      lastError: null,
+                      updatedAt: now,
+                    },
+                  }),
+                ),
+              ),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const dispatchResult = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+            type: "thread.archive",
+            commandId: CommandId.make("cmd-thread-archive-duplicate"),
+            threadId,
+          }),
+        ),
+      );
+
+      assert.equal(dispatchResult.sequence, 42);
+      assert.deepEqual(effects, [`terminal.close:${threadId}`]);
+      assert.deepEqual(dispatchedCommands, []);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("checks session status before archiving removes the thread from active lookups", () =>
     Effect.gen(function* () {
       const threadId = ThreadId.make("thread-archive-precheck");
