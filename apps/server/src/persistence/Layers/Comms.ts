@@ -231,6 +231,26 @@ const makeCommsRepository = Effect.gen(function* () {
       `,
   });
 
+  const listProjectionThreadActorSourceRows = SqlSchema.findAll({
+    Request: Schema.Struct({
+      projectId: CommsActor.fields.projectId,
+    }),
+    Result: ProjectionThreadActorSourceRow,
+    execute: ({ projectId }) =>
+      sql`
+        SELECT
+          thread_id AS "threadId",
+          project_id AS "projectId",
+          title,
+          model_selection_json AS "modelSelection"
+        FROM projection_threads
+        WHERE (${projectId} IS NULL OR project_id = ${projectId})
+          AND deleted_at IS NULL
+          AND archived_at IS NULL
+        ORDER BY title ASC, thread_id ASC
+      `,
+  });
+
   const listActorRows = SqlSchema.findAll({
     Request: Schema.Struct({
       projectId: CommsActor.fields.projectId,
@@ -677,6 +697,62 @@ const makeCommsRepository = Effect.gen(function* () {
       } satisfies CommsActor;
     });
 
+  const actorFromProjectionThreadSource = (
+    thread: Schema.Schema.Type<typeof ProjectionThreadActorSourceRow>,
+    now: string,
+  ): CommsActor => ({
+    actorId: CommsActorId.make(`thread-${thread.threadId}`),
+    kind: "agent",
+    handle: makeThreadCommsHandle({
+      title: thread.title,
+      threadId: thread.threadId,
+    }),
+    displayName: thread.title,
+    status: "active",
+    projectId: thread.projectId,
+    threadId: thread.threadId,
+    providerInstanceId: thread.modelSelection.instanceId,
+    model: thread.modelSelection.model,
+    metadata: {},
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  const findProjectionThreadActorSourceByHandle = (handle: string) =>
+    Effect.gen(function* () {
+      const normalizedHandle = handle.trim().toLowerCase();
+      const threads = yield* listProjectionThreadActorSourceRows({ projectId: null });
+      return (
+        threads.find(
+          (thread) =>
+            makeThreadCommsHandle({
+              title: thread.title,
+              threadId: thread.threadId,
+            }).toLowerCase() === normalizedHandle,
+        ) ?? null
+      );
+    });
+
+  const materializeProjectionThreadActor = (
+    thread: Schema.Schema.Type<typeof ProjectionThreadActorSourceRow>,
+  ) =>
+    Effect.gen(function* () {
+      const actor = yield* upsertActor({
+        kind: "agent",
+        handle: makeThreadCommsHandle({
+          title: thread.title,
+          threadId: thread.threadId,
+        }),
+        displayName: thread.title,
+        projectId: thread.projectId,
+        threadId: thread.threadId,
+        providerInstanceId: thread.modelSelection.instanceId,
+        model: thread.modelSelection.model,
+        status: "active",
+      });
+      return actor;
+    });
+
   const toMessageWithDelivery = (row: Schema.Schema.Type<typeof CommsInboxRow>) =>
     deriveActorFromThread(row.sender).pipe(
       Effect.map(
@@ -752,20 +828,38 @@ const makeCommsRepository = Effect.gen(function* () {
           return Option.some(actor);
         }
       }
+
+      const projectionThread = yield* findProjectionThreadActorSourceByHandle(input.handle);
+      if (projectionThread !== null) {
+        const actor = yield* materializeProjectionThreadActor(projectionThread);
+        return Option.some(actor);
+      }
       return Option.none<CommsActor>();
     }).pipe(Effect.mapError(toPersistenceSqlError("CommsRepository.getActorByHandle:query")));
 
   const listActors: CommsRepositoryShape["listActors"] = (input) =>
-    listActorRows({
-      projectId: input.projectId ?? null,
-      includeInactive: input.includeInactive ?? false,
-    }).pipe(
-      Effect.flatMap((actors) => Effect.forEach(actors, deriveActorFromThread, { concurrency: 8 })),
-      Effect.map((actors) =>
-        actors.toSorted((left, right) => left.handle.localeCompare(right.handle)),
-      ),
-      Effect.mapError(toPersistenceSqlError("CommsRepository.listActors:query")),
-    );
+    Effect.gen(function* () {
+      const projectId = input.projectId ?? null;
+      const actorRows = yield* listActorRows({
+        projectId,
+        includeInactive: input.includeInactive ?? false,
+      });
+      const actors = yield* Effect.forEach(actorRows, deriveActorFromThread, { concurrency: 8 });
+      const existingThreadIds = new Set(
+        actors.flatMap((actor) =>
+          actor.kind === "agent" && actor.threadId !== null ? [actor.threadId] : [],
+        ),
+      );
+      const projectionThreads = yield* listProjectionThreadActorSourceRows({ projectId });
+      const now = yield* nowIso;
+      const projectedActors = projectionThreads
+        .filter((thread) => !existingThreadIds.has(thread.threadId))
+        .map((thread) => actorFromProjectionThreadSource(thread, now));
+
+      return [...actors, ...projectedActors].toSorted((left, right) =>
+        left.handle.localeCompare(right.handle),
+      );
+    }).pipe(Effect.mapError(toPersistenceSqlError("CommsRepository.listActors:query")));
 
   const sendMessage: CommsRepositoryShape["sendMessage"] = (input) =>
     Effect.gen(function* () {
