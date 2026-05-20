@@ -103,6 +103,10 @@ export function useThreadActions() {
           ),
         );
       }
+      if (thread.archivedAt !== null) {
+        refreshArchivedThreadsForEnvironment(threadRef.environmentId);
+        return;
+      }
 
       const currentRouteThreadRef = getCurrentRouteThreadRef();
       const shouldNavigateToDraft =
