@@ -92,6 +92,7 @@ import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatShortTimestamp } from "../../timestampFormat";
+import { useSettings } from "../../hooks/useSettings";
 
 import {
   buildInlineTerminalContextText,
@@ -896,8 +897,10 @@ function AssistantChangedFilesSectionInner({
   resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
+  const defaultExpanded = useSettings((settings) => settings.changedFilesExpandedByDefault);
   const allDirectoriesExpanded = useUiStateStore(
-    (store) => store.threadChangedFilesExpandedById[routeThreadKey]?.[turnSummary.turnId] ?? true,
+    (store) =>
+      store.threadChangedFilesExpandedById[routeThreadKey]?.[turnSummary.turnId] ?? defaultExpanded,
   );
   const setExpanded = useUiStateStore((store) => store.setThreadChangedFilesExpanded);
   const summaryStat = summarizeTurnDiffStats(checkpointFiles);

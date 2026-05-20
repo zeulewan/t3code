@@ -172,8 +172,8 @@ function sanitizePersistedThreadChangedFilesExpanded(
 
     const nextTurns: Record<string, boolean> = {};
     for (const [turnId, expanded] of Object.entries(turns)) {
-      if (turnId && typeof expanded === "boolean" && expanded === false) {
-        nextTurns[turnId] = false;
+      if (turnId && typeof expanded === "boolean") {
+        nextTurns[turnId] = expanded;
       }
     }
 
@@ -198,7 +198,10 @@ export function persistState(state: UiState): void {
     const threadChangedFilesExpandedById = Object.fromEntries(
       Object.entries(state.threadChangedFilesExpandedById).flatMap(([threadId, turns]) => {
         const nextTurns = Object.fromEntries(
-          Object.entries(turns).filter(([, expanded]) => expanded === false),
+          Object.entries(turns).filter(
+            (entry): entry is [string, boolean] =>
+              entry[0].length > 0 && typeof entry[1] === "boolean",
+          ),
         );
         return Object.keys(nextTurns).length > 0 ? [[threadId, nextTurns]] : [];
       }),
@@ -281,34 +284,8 @@ export function setThreadChangedFilesExpanded(
   expanded: boolean,
 ): UiState {
   const currentThreadState = state.threadChangedFilesExpandedById[threadId] ?? {};
-  const currentExpanded = currentThreadState[turnId] ?? true;
-  if (currentExpanded === expanded) {
+  if (currentThreadState[turnId] === expanded) {
     return state;
-  }
-
-  if (expanded) {
-    if (!(turnId in currentThreadState)) {
-      return state;
-    }
-
-    const nextThreadState = { ...currentThreadState };
-    delete nextThreadState[turnId];
-    if (Object.keys(nextThreadState).length === 0) {
-      const nextState = { ...state.threadChangedFilesExpandedById };
-      delete nextState[threadId];
-      return {
-        ...state,
-        threadChangedFilesExpandedById: nextState,
-      };
-    }
-
-    return {
-      ...state,
-      threadChangedFilesExpandedById: {
-        ...state.threadChangedFilesExpandedById,
-        [threadId]: nextThreadState,
-      },
-    };
   }
 
   return {
@@ -317,7 +294,7 @@ export function setThreadChangedFilesExpanded(
       ...state.threadChangedFilesExpandedById,
       [threadId]: {
         ...currentThreadState,
-        [turnId]: false,
+        [turnId]: expanded,
       },
     },
   };

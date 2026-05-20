@@ -17,6 +17,7 @@ const clientSettings: ClientSettings = {
   confirmThreadArchive: true,
   confirmThreadDelete: false,
   dismissedProviderUpdateNotificationKeys: [],
+  changedFilesExpandedByDefault: false,
   diffIgnoreWhitespace: true,
   favorites: [],
   providerModelPreferences: {},

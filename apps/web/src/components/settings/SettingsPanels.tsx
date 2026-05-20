@@ -410,6 +410,10 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Visible threads"]
         : []),
       ...(settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? ["Word wrap"] : []),
+      ...(settings.changedFilesExpandedByDefault !==
+      DEFAULT_UNIFIED_SETTINGS.changedFilesExpandedByDefault
+        ? ["Changed files"]
+        : []),
       ...(settings.diffIgnoreWhitespace !== DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace
         ? ["Diff whitespace changes"]
         : []),
@@ -673,6 +677,34 @@ export function GeneralSettingsPanel() {
               checked={settings.wordWrap}
               onCheckedChange={(checked) => updateSettings({ wordWrap: Boolean(checked) })}
               aria-label="Wrap code, tables, diffs, and file previews by default"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Changed files"
+          description="Choose whether assistant changed-file trees start expanded or collapsed."
+          resetAction={
+            settings.changedFilesExpandedByDefault !==
+            DEFAULT_UNIFIED_SETTINGS.changedFilesExpandedByDefault ? (
+              <SettingResetButton
+                label="changed files"
+                onClick={() =>
+                  updateSettings({
+                    changedFilesExpandedByDefault:
+                      DEFAULT_UNIFIED_SETTINGS.changedFilesExpandedByDefault,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.changedFilesExpandedByDefault}
+              onCheckedChange={(checked) =>
+                updateSettings({ changedFilesExpandedByDefault: Boolean(checked) })
+              }
+              aria-label="Expand changed files by default"
             />
           }
         />

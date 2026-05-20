@@ -3,13 +3,16 @@ import * as Schema from "effect/Schema";
 
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
+  ClientSettingsPatch,
   ClientSettingsSchema,
+  DEFAULT_CLIENT_SETTINGS,
   DEFAULT_SERVER_SETTINGS,
   ServerSettings,
   ServerSettingsPatch,
 } from "./settings.ts";
 
 const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
+const decodeClientSettingsPatch = Schema.decodeUnknownSync(ClientSettingsPatch);
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
@@ -28,6 +31,18 @@ describe("ClientSettings word wrap", () => {
     expect(decoded.wordWrap).toBe(true);
     expect(decoded).not.toHaveProperty("chatWordWrap");
     expect(decoded).not.toHaveProperty("diffWordWrap");
+  });
+});
+
+describe("ClientSettings changed files defaults", () => {
+  it("defaults changed file trees to collapsed", () => {
+    expect(DEFAULT_CLIENT_SETTINGS.changedFilesExpandedByDefault).toBe(false);
+    expect(decodeClientSettings({}).changedFilesExpandedByDefault).toBe(false);
+  });
+
+  it("accepts changed file expansion patches", () => {
+    const patch = decodeClientSettingsPatch({ changedFilesExpandedByDefault: true });
+    expect(patch.changedFilesExpandedByDefault).toBe(true);
   });
 });
 
