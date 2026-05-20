@@ -210,7 +210,7 @@ async function main(): Promise<void> {
   // Give the foreground invoker time to return before the worker tears down
   // the server process that may have launched it.
   await sleep(1_000);
-  await stopServer(previousState.pid, options);
+  await stopServer(previousState.pid, healthTarget, options);
   await startServer(launchCommand, options.cwd, logFile);
 
   const nextState = await waitForRuntimeStateRestart(
@@ -379,7 +379,11 @@ function printPlan(input: {
   console.log(`[${mode}] health target: ${input.healthTarget.host}:${input.healthTarget.port}`);
 }
 
-async function stopServer(pid: number, options: RestartOptions): Promise<void> {
+async function stopServer(
+  pid: number,
+  healthTarget: { readonly host: string; readonly port: number },
+  options: RestartOptions,
+): Promise<void> {
   if (!isProcessAlive(pid)) {
     console.log(`T3 server pid ${pid} is already stopped; starting a replacement.`);
     return;
@@ -387,15 +391,22 @@ async function stopServer(pid: number, options: RestartOptions): Promise<void> {
 
   console.log(`Stopping T3 server pid ${pid} with SIGTERM...`);
   process.kill(pid, "SIGTERM");
-  const stopped = await waitUntil(() => !isProcessAlive(pid), options.graceMs);
+  const stopped = await waitUntil(
+    async () => !isProcessAlive(pid) || !(await canConnect(healthTarget.host, healthTarget.port)),
+    options.graceMs,
+  );
   if (stopped) {
-    console.log(`T3 server pid ${pid} stopped cleanly.`);
+    console.log(
+      isProcessAlive(pid)
+        ? `T3 server listener ${healthTarget.host}:${healthTarget.port} stopped; pid ${pid} is finishing cleanup.`
+        : `T3 server pid ${pid} stopped cleanly.`,
+    );
     return;
   }
 
   if (!options.forceKill) {
     throw new Error(
-      `T3 server pid ${pid} did not stop within ${options.graceMs}ms. Rerun with --force-kill if you want SIGKILL fallback.`,
+      `T3 server pid ${pid} did not stop listening on ${healthTarget.host}:${healthTarget.port} within ${options.graceMs}ms. Rerun with --force-kill if you want SIGKILL fallback.`,
     );
   }
 

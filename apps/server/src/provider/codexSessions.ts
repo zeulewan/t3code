@@ -18,7 +18,6 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as CodexClient from "effect-codex-app-server/client";
 import type * as CodexSchema from "effect-codex-app-server/schema";
@@ -118,14 +117,6 @@ function titleForThread(thread: CodexThreadRead, override: string | undefined): 
     if (normalized && normalized.length > 0) return truncateTitle(normalized);
   }
   return "Imported Codex session";
-}
-
-function normalizePathForCompare(path: Path.Path, value: string): string {
-  return path.resolve(value.trim());
-}
-
-function isSameCwd(path: Path.Path, left: string, right: string): boolean {
-  return normalizePathForCompare(path, left) === normalizePathForCompare(path, right);
 }
 
 function serviceTierForModelSelection(
@@ -310,7 +301,6 @@ export const importCodexSession = Effect.fn("importCodexSession")(function* (
   input: CodexSessionImportInput,
 ) {
   const instance = yield* resolveCodexInstance(input.providerInstanceId);
-  const path = yield* Path.Path;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const project = yield* projectionSnapshotQuery.getProjectShellById(input.projectId).pipe(
     Effect.map(Option.getOrUndefined),
@@ -329,18 +319,20 @@ export const importCodexSession = Effect.fn("importCodexSession")(function* (
         includeTurns: true,
       });
       const title = titleForThread(readResponse.thread, input.title);
-      const providerThreadId = isSameCwd(path, readResponse.thread.cwd, targetCwd)
-        ? input.providerThreadId
-        : (yield* client.request(
-            "thread/fork",
-            buildCodexThreadForkParams({
-              threadId: input.providerThreadId,
-              cwd: targetCwd,
-              runtimeMode: input.runtimeMode,
-              model: input.modelSelection.model,
-              serviceTier: serviceTierForModelSelection(input.modelSelection),
-            }),
-          )).thread.id;
+      // A native Codex thread may already be attached to a live CLI/IDE owner.
+      // Importing by resuming the same provider thread makes T3 share that
+      // stream and can leave assistant output owned by the original client.
+      // Always fork so the T3 app-server owns an independent provider thread.
+      const providerThreadId = (yield* client.request(
+        "thread/fork",
+        buildCodexThreadForkParams({
+          threadId: input.providerThreadId,
+          cwd: targetCwd,
+          runtimeMode: input.runtimeMode,
+          model: input.modelSelection.model,
+          serviceTier: serviceTierForModelSelection(input.modelSelection),
+        }),
+      )).thread.id;
 
       yield* client
         .request("thread/name/set", {
