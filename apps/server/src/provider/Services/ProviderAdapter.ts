@@ -16,6 +16,7 @@ import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
+  ProviderSetThreadTitleInput,
   ThreadId,
   ProviderTurnStartResult,
   TurnId,
@@ -55,6 +56,11 @@ export interface ProviderAdapterShape<TError> {
   readonly startSession: (
     input: ProviderSessionStartInput,
   ) => Effect.Effect<ProviderSession, TError>;
+
+  /**
+   * Set the provider-native user-facing thread title when supported.
+   */
+  readonly setThreadTitle: (input: ProviderSetThreadTitleInput) => Effect.Effect<void, TError>;
 
   /**
    * Send a turn to an active provider session.

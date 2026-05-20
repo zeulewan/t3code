@@ -53,7 +53,8 @@ type ProviderIntentEvent = Extract<
       | "thread.turn-interrupt-requested"
       | "thread.approval-response-requested"
       | "thread.user-input-response-requested"
-      | "thread.session-stop-requested";
+      | "thread.session-stop-requested"
+      | "thread.meta-updated";
   }
 >;
 
@@ -87,6 +88,7 @@ const HANDLED_TURN_START_KEY_MAX = 10_000;
 const HANDLED_TURN_START_KEY_TTL = Duration.minutes(30);
 const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 const DEFAULT_THREAD_TITLE = "New thread";
+const CODEX_PROVIDER = ProviderDriverKind.make("codex");
 
 export function providerErrorLabel(value: string | undefined): string {
   const normalized = value?.trim();
@@ -480,6 +482,7 @@ const make = Effect.gen(function* () {
         ...(preferredProvider ? { provider: preferredProvider } : {}),
         providerInstanceId: desiredInstanceId,
         ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
+        title: thread.title,
         modelSelection: desiredModelSelection,
         ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
         runtimeMode: desiredRuntimeMode,
@@ -1002,6 +1005,36 @@ const make = Effect.gen(function* () {
     });
   });
 
+  const processThreadMetaUpdated = Effect.fn("processThreadMetaUpdated")(function* (
+    event: Extract<ProviderIntentEvent, { type: "thread.meta-updated" }>,
+  ) {
+    const title = event.payload.title?.trim();
+    if (!title) {
+      return;
+    }
+    const thread = yield* resolveThread(event.payload.threadId);
+    if (!thread?.session || thread.session.status === "stopped") {
+      return;
+    }
+    if (thread.session.providerName !== CODEX_PROVIDER) {
+      return;
+    }
+    yield* providerService
+      .setThreadTitle({
+        threadId: event.payload.threadId,
+        title,
+      })
+      .pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("provider command reactor failed to sync thread title to provider", {
+            threadId: event.payload.threadId,
+            title,
+            cause: Cause.pretty(cause),
+          }),
+        ),
+      );
+  });
+
   const processDomainEvent = Effect.fn("processDomainEvent")(function* (
     event: ProviderIntentEvent,
   ) {
@@ -1042,6 +1075,9 @@ const make = Effect.gen(function* () {
       case "thread.session-stop-requested":
         yield* processSessionStopRequested(event);
         return;
+      case "thread.meta-updated":
+        yield* processThreadMetaUpdated(event);
+        return;
     }
   });
 
@@ -1068,7 +1104,8 @@ const make = Effect.gen(function* () {
         event.type === "thread.turn-interrupt-requested" ||
         event.type === "thread.approval-response-requested" ||
         event.type === "thread.user-input-response-requested" ||
-        event.type === "thread.session-stop-requested"
+        event.type === "thread.session-stop-requested" ||
+        event.type === "thread.meta-updated"
       ) {
         return yield* worker.enqueue(event);
       }

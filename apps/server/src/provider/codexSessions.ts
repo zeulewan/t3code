@@ -1,9 +1,7 @@
 import {
   CodexSessionError,
   type CodexSessionImportInput,
-  type CodexSessionImportResult,
   type CodexSessionListInput,
-  type CodexSessionListResult,
   type CodexSessionSummary,
   CodexSettings as CodexSettingsSchema,
   type CodexSettings,
@@ -14,21 +12,26 @@ import {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
+import { getModelSelectionBooleanOptionValue } from "@t3tools/shared/model";
+import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as CodexClient from "effect-codex-app-server/client";
 import type * as CodexSchema from "effect-codex-app-server/schema";
 
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
+import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { expandHomePath } from "../pathExpansion.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { ProviderService } from "./Services/ProviderService.ts";
 import { mergeProviderInstanceEnvironment } from "./ProviderInstanceEnvironment.ts";
 import { buildCodexInitializeParams } from "./Layers/CodexProvider.ts";
 import { materializeCodexShadowHome, resolveCodexHomeLayout } from "./Drivers/CodexHomeLayout.ts";
+import { buildCodexThreadForkParams, type CodexServiceTier } from "./CodexAppServerThreadConfig.ts";
 
 const CODEX = ProviderDriverKind.make("codex");
 const DEFAULT_CODEX_INSTANCE = ProviderInstanceId.make("codex");
@@ -115,6 +118,20 @@ function titleForThread(thread: CodexThreadRead, override: string | undefined): 
     if (normalized && normalized.length > 0) return truncateTitle(normalized);
   }
   return "Imported Codex session";
+}
+
+function normalizePathForCompare(path: Path.Path, value: string): string {
+  return path.resolve(value.trim());
+}
+
+function isSameCwd(path: Path.Path, left: string, right: string): boolean {
+  return normalizePathForCompare(path, left) === normalizePathForCompare(path, right);
+}
+
+function serviceTierForModelSelection(
+  input: CodexSessionImportInput["modelSelection"],
+): CodexServiceTier | undefined {
+  return getModelSelectionBooleanOptionValue(input, "fastMode") === true ? "fast" : undefined;
 }
 
 function textFromUserContent(content: CodexThreadItem & { readonly type: "userMessage" }): string {
@@ -293,21 +310,70 @@ export const importCodexSession = Effect.fn("importCodexSession")(function* (
   input: CodexSessionImportInput,
 ) {
   const instance = yield* resolveCodexInstance(input.providerInstanceId);
-  const readResponse = yield* withCodexClient(instance, process.cwd(), (client) =>
-    client.request("thread/read", {
-      threadId: input.providerThreadId,
-      includeTurns: true,
+  const path = yield* Path.Path;
+  const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+  const project = yield* projectionSnapshotQuery.getProjectShellById(input.projectId).pipe(
+    Effect.map(Option.getOrUndefined),
+    Effect.mapError((cause) => toCodexSessionError("Read target project", cause)),
+  );
+  if (!project) {
+    return yield* new CodexSessionError({
+      message: `Project '${input.projectId}' was not found.`,
+    });
+  }
+  const targetCwd = project.workspaceRoot;
+  const imported = yield* withCodexClient(instance, targetCwd, (client) =>
+    Effect.gen(function* () {
+      const readResponse = yield* client.request("thread/read", {
+        threadId: input.providerThreadId,
+        includeTurns: true,
+      });
+      const title = titleForThread(readResponse.thread, input.title);
+      const providerThreadId = isSameCwd(path, readResponse.thread.cwd, targetCwd)
+        ? input.providerThreadId
+        : (yield* client.request(
+            "thread/fork",
+            buildCodexThreadForkParams({
+              threadId: input.providerThreadId,
+              cwd: targetCwd,
+              runtimeMode: input.runtimeMode,
+              model: input.modelSelection.model,
+              serviceTier: serviceTierForModelSelection(input.modelSelection),
+            }),
+          )).thread.id;
+
+      yield* client
+        .request("thread/name/set", {
+          threadId: providerThreadId,
+          name: title,
+        })
+        .pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("failed to sync imported Codex thread name", {
+              sourceProviderThreadId: input.providerThreadId,
+              providerThreadId,
+              title,
+              cause: Cause.pretty(cause),
+            }),
+          ),
+        );
+
+      return {
+        readResponse,
+        providerThreadId,
+        title,
+      };
     }),
   ).pipe(Effect.mapError((cause) => toCodexSessionError("Read Codex session", cause)));
 
   const orchestration = yield* OrchestrationEngineService;
   const providerService = yield* ProviderService;
-  const thread = readResponse.thread;
+  const thread = imported.readResponse.thread;
   const threadId = ThreadId.make(crypto.randomUUID());
   const importId = crypto.randomUUID();
   const now = DateTime.formatIso(yield* DateTime.now);
   const createdAt = unixSecondsToIso(thread.createdAt, now);
-  const title = titleForThread(thread, input.title);
+  const title = imported.title;
 
   yield* orchestration
     .dispatch({
@@ -349,10 +415,11 @@ export const importCodexSession = Effect.fn("importCodexSession")(function* (
       threadId,
       provider: CODEX,
       providerInstanceId: input.providerInstanceId,
-      cwd: thread.cwd,
+      cwd: targetCwd,
+      title,
       modelSelection: input.modelSelection,
       runtimeMode: input.runtimeMode,
-      resumeCursor: { threadId: input.providerThreadId },
+      resumeCursor: { threadId: imported.providerThreadId },
     })
     .pipe(Effect.mapError((cause) => toCodexSessionError("Resume Codex session", cause)));
   const sessionUpdatedAt = DateTime.formatIso(yield* DateTime.now);
@@ -378,7 +445,7 @@ export const importCodexSession = Effect.fn("importCodexSession")(function* (
 
   return {
     threadId,
-    providerThreadId: input.providerThreadId,
+    providerThreadId: imported.providerThreadId,
     importedMessages: importedMessages.length,
   };
 });

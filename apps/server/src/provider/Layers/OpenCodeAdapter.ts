@@ -1434,6 +1434,8 @@ export function makeOpenCodeAdapter(
       },
     );
 
+    const setThreadTitle: OpenCodeAdapterShape["setThreadTitle"] = () => Effect.void;
+
     const stopAll: OpenCodeAdapterShape["stopAll"] = () =>
       Effect.gen(function* () {
         const contexts = [...sessions.values()];
@@ -1455,6 +1457,7 @@ export function makeOpenCodeAdapter(
         sessionModelSwitch: "in-session",
       },
       startSession,
+      setThreadTitle,
       sendTurn,
       interruptTurn,
       respondToRequest,
