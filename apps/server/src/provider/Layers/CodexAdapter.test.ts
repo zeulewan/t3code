@@ -1102,6 +1102,58 @@ scopedLifecycleLayer("CodexAdapterLive scoped lifecycle", (it) => {
       assert.equal(yield* adapter.hasSession(asThreadId("thread-stop")), false);
     }),
   );
+
+  it.effect("keeps runtime event forwarding alive after the start caller scope closes", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CodexAdapter;
+      const callerScope = yield* Scope.make("sequential");
+      try {
+        yield* adapter
+          .startSession({
+            provider: ProviderDriverKind.make("codex"),
+            threadId: asThreadId("thread-event-scope"),
+            runtimeMode: "full-access",
+          })
+          .pipe(Effect.provideService(Scope.Scope, callerScope));
+      } finally {
+        yield* Scope.close(callerScope, Exit.void);
+      }
+
+      const runtime = scopedLifecycleRuntimeFactory.lastRuntime;
+      assert.ok(runtime);
+
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+      yield* runtime.emit({
+        id: asEventId("evt-after-caller-scope"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/agentMessage/delta",
+        threadId: asThreadId("thread-event-scope"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("msg_1"),
+        textDelta: "still attached",
+        payload: {
+          threadId: "provider-thread-1",
+          turnId: "turn-1",
+          itemId: "msg_1",
+          delta: "still attached",
+        },
+      } satisfies ProviderEvent);
+
+      const result = yield* Fiber.join(firstEventFiber).pipe(Effect.timeoutOption("1 second"));
+      assert.equal(result._tag, "Some");
+      if (result._tag !== "Some") {
+        return;
+      }
+      assert.equal(result.value._tag, "Some");
+      if (result.value._tag !== "Some") {
+        return;
+      }
+      assert.equal(result.value.value.type, "content.delta");
+      assert.equal(result.value.value.threadId, "thread-event-scope");
+    }),
+  );
 });
 
 const scopedFailureRuntimeFactory = makeScopedRuntimeFactory({ failConstruction: true });
