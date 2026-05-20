@@ -615,12 +615,33 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           .refreshStatus(cwd)
           .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid);
 
+      const closeThreadTerminalsAfterArchive = (threadId: ThreadId) =>
+        terminalManager.close({ threadId }).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("failed to close thread terminals after archive", {
+              threadId,
+              error: error.message,
+            }),
+          ),
+        );
+
       return WsRpcGroup.of({
         [ORCHESTRATION_WS_METHODS.dispatchCommand]: (command) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.dispatchCommand,
             Effect.gen(function* () {
               const normalizedCommand = yield* normalizeDispatchCommand(command);
+              if (normalizedCommand.type === "thread.archive") {
+                const threadShell = yield* projectionSnapshotQuery.getThreadShellById(
+                  normalizedCommand.threadId,
+                );
+                if (Option.isSome(threadShell) && threadShell.value.archivedAt !== null) {
+                  yield* closeThreadTerminalsAfterArchive(normalizedCommand.threadId);
+                  const { snapshotSequence } = yield* projectionSnapshotQuery.getSnapshotSequence();
+                  return { sequence: snapshotSequence };
+                }
+              }
+
               const shouldStopSessionAfterArchive =
                 normalizedCommand.type === "thread.archive"
                   ? yield* projectionSnapshotQuery
@@ -660,14 +681,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                   );
                 }
 
-                yield* terminalManager.close({ threadId: normalizedCommand.threadId }).pipe(
-                  Effect.catch((error) =>
-                    Effect.logWarning("failed to close thread terminals after archive", {
-                      threadId: normalizedCommand.threadId,
-                      error: error.message,
-                    }),
-                  ),
-                );
+                yield* closeThreadTerminalsAfterArchive(normalizedCommand.threadId);
               }
               return result;
             }).pipe(

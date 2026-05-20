@@ -68,6 +68,10 @@ export function useThreadActions() {
       if (thread.session?.status === "running" && thread.session.activeTurnId != null) {
         throw new Error("Cannot archive a running thread.");
       }
+      if (thread.archivedAt !== null) {
+        refreshArchivedThreadsForEnvironment(threadRef.environmentId);
+        return;
+      }
 
       const currentRouteThreadRef = getCurrentRouteThreadRef();
       const shouldNavigateToDraft =
