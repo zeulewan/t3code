@@ -32,6 +32,7 @@ interface RestartOptions {
   readonly logFile: string | undefined;
   readonly runtimeStatePath: string | undefined;
   readonly timeoutMs: number;
+  readonly worker: boolean;
 }
 
 function usage(): string {
@@ -65,6 +66,7 @@ function parseArgs(argv: ReadonlyArray<string>): RestartOptions {
     logFile: string | undefined;
     runtimeStatePath: string | undefined;
     timeoutMs: number;
+    worker: boolean;
   } = {
     baseDir: DEFAULT_BASE_DIR,
     cwd: process.cwd(),
@@ -76,6 +78,7 @@ function parseArgs(argv: ReadonlyArray<string>): RestartOptions {
     logFile: undefined,
     runtimeStatePath: undefined,
     timeoutMs: DEFAULT_TIMEOUT_MS,
+    worker: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -111,6 +114,9 @@ function parseArgs(argv: ReadonlyArray<string>): RestartOptions {
         break;
       case "--timeout-ms":
         options.timeoutMs = parsePositiveInteger(requireValue(argv, ++index, arg), arg);
+        break;
+      case "--worker":
+        options.worker = true;
         break;
       default:
         throw new Error(`Unknown option: ${arg}`);
@@ -196,6 +202,14 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (!options.worker) {
+    await startRestartWorker(options, logFile);
+    return;
+  }
+
+  // Give the foreground invoker time to return before the worker tears down
+  // the server process that may have launched it.
+  await sleep(1_000);
   await stopServer(previousState.pid, options);
   await startServer(launchCommand, options.cwd, logFile);
 
@@ -209,6 +223,39 @@ async function main(): Promise<void> {
   console.log(
     `T3 server restarted: pid ${previousState.pid} -> ${nextState.pid}, ${nextState.origin}`,
   );
+}
+
+async function startRestartWorker(options: RestartOptions, logFile: string): Promise<void> {
+  await mkdir(NodePath.dirname(logFile), { recursive: true });
+  await appendFile(
+    logFile,
+    `\n\n[${new Date().toISOString()}] Scheduling detached T3 restart worker.\n`,
+  );
+
+  const scriptPath = process.argv[1];
+  if (!scriptPath) {
+    throw new Error("Could not resolve restart script path.");
+  }
+
+  const workerArgs = process.argv
+    .slice(2)
+    .filter((arg) => arg !== "--worker")
+    .concat("--worker");
+
+  const logFd = openSync(logFile, "a");
+  try {
+    const child = spawn(process.execPath, [scriptPath, ...workerArgs], {
+      cwd: options.cwd,
+      detached: true,
+      env: process.env,
+      stdio: ["ignore", logFd, logFd],
+    });
+    child.unref();
+    console.log(`Scheduled detached restart worker pid ${child.pid ?? "unknown"}.`);
+    console.log(`Follow restart progress in ${logFile}.`);
+  } finally {
+    closeSync(logFd);
+  }
 }
 
 async function resolveRuntimeStatePath(options: RestartOptions): Promise<string> {
