@@ -21,6 +21,7 @@ import type { DraftThreadEnvMode } from "../composerDraftStore";
 
 export const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "t3code:last-invoked-script-by-project";
 export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
+export const DEFAULT_THREAD_TITLE = "New thread";
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
 
@@ -51,6 +52,29 @@ export function buildLocalDraftThread(
     activities: [],
     proposedPlans: [],
   };
+}
+
+export function shouldTreatSendAsFirstThreadMessage(input: {
+  readonly isServerThread: boolean;
+  readonly messageCount: number;
+  readonly latestTurn: Thread["latestTurn"];
+}): boolean {
+  if (!input.isServerThread) {
+    return true;
+  }
+  return input.messageCount === 0 && input.latestTurn === null;
+}
+
+export function shouldAutoTitleServerThreadOnSend(input: {
+  readonly isServerThread: boolean;
+  readonly isFirstMessage: boolean;
+  readonly currentTitle: string;
+}): boolean {
+  return (
+    input.isServerThread &&
+    input.isFirstMessage &&
+    input.currentTitle.trim() === DEFAULT_THREAD_TITLE
+  );
 }
 
 export function shouldWriteThreadErrorToCurrentServerThread(input: {
