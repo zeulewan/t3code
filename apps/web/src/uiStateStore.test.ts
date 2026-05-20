@@ -429,7 +429,7 @@ describe("uiStateStore pure functions", () => {
     });
   });
 
-  it("setThreadChangedFilesExpanded removes thread overrides when expanded again", () => {
+  it("setThreadChangedFilesExpanded stores expanded turns per thread", () => {
     const thread1 = ThreadId.make("thread-1");
     const initialState = makeUiState({
       threadChangedFilesExpandedById: {
@@ -441,7 +441,11 @@ describe("uiStateStore pure functions", () => {
 
     const next = setThreadChangedFilesExpanded(initialState, thread1, "turn-1", true);
 
-    expect(next.threadChangedFilesExpandedById).toEqual({});
+    expect(next.threadChangedFilesExpandedById).toEqual({
+      [thread1]: {
+        "turn-1": true,
+      },
+    });
   });
 });
 
