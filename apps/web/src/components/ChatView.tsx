@@ -221,6 +221,9 @@ import {
   resolveSendEnvMode,
   revokeBlobPreviewUrl,
   revokeUserMessagePreviewUrls,
+  shouldAutoTitleServerThreadOnSend,
+  shouldTreatSendAsFirstThreadMessage,
+  shouldWriteThreadErrorToCurrentServerThread,
   waitForStartedServerThread,
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -3691,7 +3694,11 @@ function ChatViewContent(props: ChatViewProps) {
     }
     if (!activeProject) return;
     const threadIdForSend = activeThread.id;
-    const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
+    const isFirstMessage = shouldTreatSendAsFirstThreadMessage({
+      isServerThread,
+      messageCount: activeThread.messages.length,
+      latestTurn: activeThread.latestTurn,
+    });
     const baseBranchForWorktree =
       isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath
         ? activeThreadBranch
@@ -3820,7 +3827,13 @@ function ChatViewContent(props: ChatViewProps) {
 
     let failure: AtomCommandResult<unknown, unknown> | null = null;
     // Auto-title from first message
-    if (isFirstMessage && isServerThread) {
+    if (
+      shouldAutoTitleServerThreadOnSend({
+        isServerThread,
+        isFirstMessage,
+        currentTitle: activeThread.title,
+      })
+    ) {
       const titleResult = await updateThreadMetadata({
         environmentId,
         input: {

@@ -13,6 +13,8 @@ import {
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
   resolveSendEnvMode,
+  shouldAutoTitleServerThreadOnSend,
+  shouldTreatSendAsFirstThreadMessage,
   shouldWriteThreadErrorToCurrentServerThread,
 } from "./ChatView.logic";
 
@@ -226,6 +228,67 @@ describe("resolveSendEnvMode", () => {
   it("keeps worktree mode only for git repositories", () => {
     expect(resolveSendEnvMode({ requestedEnvMode: "worktree", isGitRepo: true })).toBe("worktree");
     expect(resolveSendEnvMode({ requestedEnvMode: "worktree", isGitRepo: false })).toBe("local");
+  });
+});
+
+describe("shouldTreatSendAsFirstThreadMessage", () => {
+  it("treats local drafts as first-message sends", () => {
+    expect(
+      shouldTreatSendAsFirstThreadMessage({
+        isServerThread: false,
+        messageCount: 0,
+        latestTurn: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not misclassify a hydrated server thread as first-message", () => {
+    expect(
+      shouldTreatSendAsFirstThreadMessage({
+        isServerThread: true,
+        messageCount: 1,
+        latestTurn: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not misclassify a shell-only resumed server thread as first-message", () => {
+    expect(
+      shouldTreatSendAsFirstThreadMessage({
+        isServerThread: true,
+        messageCount: 0,
+        latestTurn: {
+          turnId: TurnId.make("turn-existing"),
+          state: "completed",
+          requestedAt: "2026-05-20T00:00:00.000Z",
+          startedAt: "2026-05-20T00:00:01.000Z",
+          completedAt: "2026-05-20T00:00:02.000Z",
+          assistantMessageId: null,
+        },
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("shouldAutoTitleServerThreadOnSend", () => {
+  it("only auto-titles default-named empty server threads", () => {
+    expect(
+      shouldAutoTitleServerThreadOnSend({
+        isServerThread: true,
+        isFirstMessage: true,
+        currentTitle: "New thread",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not overwrite named server threads", () => {
+    expect(
+      shouldAutoTitleServerThreadOnSend({
+        isServerThread: true,
+        isFirstMessage: true,
+        currentTitle: "river",
+      }),
+    ).toBe(false);
   });
 });
 
