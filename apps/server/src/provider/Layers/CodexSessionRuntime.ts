@@ -17,6 +17,7 @@ import {
   TurnId,
 } from "@t3tools/contracts";
 import { normalizeModelSlug } from "@t3tools/shared/model";
+import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -41,6 +42,11 @@ import {
   CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
   CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
 } from "../CodexDeveloperInstructions.ts";
+import {
+  buildCodexThreadStartParams,
+  runtimeModeToCodexThreadConfig,
+  type CodexServiceTier,
+} from "../CodexAppServerThreadConfig.ts";
 const decodeV2TurnStartResponse = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnStartResponse);
 
 const PROVIDER = ProviderDriverKind.make("codex");
@@ -87,7 +93,6 @@ export type CodexTurnStartParamsWithCollaborationMode =
 const formatSchemaIssue = SchemaIssue.makeFormatterDefault();
 
 export type CodexResumeCursor = typeof CodexResumeCursorSchema.Type;
-type CodexServiceTier = NonNullable<EffectCodexSchema.V2ThreadStartParams["serviceTier"]>;
 type CodexThreadItem =
   | EffectCodexSchema.V2ThreadReadResponse["thread"]["turns"][number]["items"][number]
   | EffectCodexSchema.V2ThreadRollbackResponse["thread"]["turns"][number]["items"][number];
@@ -99,6 +104,7 @@ export interface CodexSessionRuntimeOptions {
   readonly homePath?: string;
   readonly environment?: NodeJS.ProcessEnv;
   readonly cwd: string;
+  readonly title?: string;
   readonly runtimeMode: RuntimeMode;
   readonly model?: string;
   readonly serviceTier?: CodexServiceTier | undefined;
@@ -138,6 +144,7 @@ export interface CodexSessionRuntimeShape {
   readonly rollbackThread: (
     numTurns: number,
   ) => Effect.Effect<CodexThreadSnapshot, CodexSessionRuntimeError>;
+  readonly setThreadTitle: (title: string) => Effect.Effect<void, CodexSessionRuntimeError>;
   readonly respondToRequest: (
     requestId: ApprovalRequestId,
     decision: ProviderApprovalDecision,
@@ -258,46 +265,6 @@ function readResumeCursorThreadId(
   return isCodexResumeCursorSchema(resumeCursor) ? resumeCursor.threadId : undefined;
 }
 
-function runtimeModeToThreadConfig(input: RuntimeMode): {
-  readonly approvalPolicy: EffectCodexSchema.V2ThreadStartParams__AskForApproval;
-  readonly sandbox: EffectCodexSchema.V2ThreadStartParams__SandboxMode;
-} {
-  switch (input) {
-    case "approval-required":
-      return {
-        approvalPolicy: "untrusted",
-        sandbox: "read-only",
-      };
-    case "auto-accept-edits":
-      return {
-        approvalPolicy: "on-request",
-        sandbox: "workspace-write",
-      };
-    case "full-access":
-    default:
-      return {
-        approvalPolicy: "never",
-        sandbox: "danger-full-access",
-      };
-  }
-}
-
-function buildThreadStartParams(input: {
-  readonly cwd: string;
-  readonly runtimeMode: RuntimeMode;
-  readonly model: string | undefined;
-  readonly serviceTier: CodexServiceTier | undefined;
-}): EffectCodexSchema.V2ThreadStartParams {
-  const config = runtimeModeToThreadConfig(input.runtimeMode);
-  return {
-    cwd: input.cwd,
-    approvalPolicy: config.approvalPolicy,
-    sandbox: config.sandbox,
-    ...(input.model ? { model: input.model } : {}),
-    ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
-  };
-}
-
 function runtimeModeToTurnSandboxPolicy(
   input: RuntimeMode,
 ): EffectCodexSchema.V2TurnStartParams__SandboxPolicy {
@@ -367,7 +334,7 @@ export function buildTurnStartParams(input: {
     turnInput.push(attachment);
   }
 
-  const config = runtimeModeToThreadConfig(input.runtimeMode);
+  const config = runtimeModeToCodexThreadConfig(input.runtimeMode);
   const collaborationMode = buildCodexCollaborationMode({
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
     ...(input.model ? { model: input.model } : {}),
@@ -439,7 +406,7 @@ export const openCodexThread = (input: {
   readonly resumeThreadId: string | undefined;
 }): Effect.Effect<CodexThreadOpenResponse, CodexErrors.CodexAppServerError> => {
   const resumeThreadId = input.resumeThreadId;
-  const startParams = buildThreadStartParams({
+  const startParams = buildCodexThreadStartParams({
     cwd: input.cwd,
     runtimeMode: input.runtimeMode,
     model: input.requestedModel,
@@ -666,6 +633,11 @@ function currentProviderThreadId(session: ProviderSession): string | undefined {
   return readResumeCursorThreadId(session.resumeCursor);
 }
 
+function normalizeThreadTitle(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
 function updateSession(
   sessionRef: Ref.Ref<ProviderSession>,
   updates: Partial<ProviderSession>,
@@ -877,6 +849,11 @@ export const makeCodexSessionRuntime = (
       });
 
     const currentSessionProviderThreadId = Effect.map(Ref.get(sessionRef), currentProviderThreadId);
+    const setProviderThreadTitle = (providerThreadId: string, title: string) =>
+      client.request("thread/name/set", {
+        threadId: providerThreadId,
+        name: title,
+      });
 
     yield* client.handleServerNotification("thread/started", (payload) =>
       currentSessionProviderThreadId.pipe(
@@ -1205,6 +1182,19 @@ export const makeCodexSessionRuntime = (
       });
 
       const providerThreadId = opened.thread.id;
+      const initialTitle = normalizeThreadTitle(options.title);
+      if (initialTitle) {
+        yield* setProviderThreadTitle(providerThreadId, initialTitle).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("codex app-server thread title sync failed during start", {
+              threadId: options.threadId,
+              providerThreadId,
+              title: initialTitle,
+              cause: Cause.pretty(cause),
+            }),
+          ),
+        );
+      }
       const session = {
         ...(yield* Ref.get(sessionRef)),
         status: "ready",
@@ -1322,6 +1312,15 @@ export const makeCodexSessionRuntime = (
             activeTurnId: undefined,
           });
           return parseThreadSnapshot(response);
+        }),
+      setThreadTitle: (title) =>
+        Effect.gen(function* () {
+          const normalized = normalizeThreadTitle(title);
+          if (!normalized) {
+            return;
+          }
+          const providerThreadId = yield* readProviderThreadId;
+          yield* setProviderThreadTitle(providerThreadId, normalized);
         }),
       respondToRequest: (requestId, decision) =>
         Effect.gen(function* () {

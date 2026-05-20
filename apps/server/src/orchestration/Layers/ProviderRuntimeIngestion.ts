@@ -1570,7 +1570,11 @@ const make = Effect.gen(function* () {
         }
       }
 
-      if (event.type === "thread.metadata.updated" && event.payload.name) {
+      if (
+        event.type === "thread.metadata.updated" &&
+        event.payload.name &&
+        event.payload.name.trim() !== thread.title.trim()
+      ) {
         yield* orchestrationEngine.dispatch({
           type: "thread.meta.update",
           commandId: yield* providerCommandId(event, "thread-meta-update"),

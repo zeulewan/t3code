@@ -494,6 +494,7 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
         sessionModelSwitch: "in-session",
       },
       startSession,
+      setThreadTitle: () => Effect.void,
       sendTurn,
       interruptTurn,
       respondToRequest,

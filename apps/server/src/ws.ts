@@ -5,6 +5,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -176,6 +177,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
     Effect.gen(function* () {
       const crypto = yield* Crypto.Crypto;
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+      const path = yield* Path.Path;
       const orchestrationEngine = yield* OrchestrationEngineService;
       const checkpointDiffQuery = yield* CheckpointDiffQuery;
       const keybindings = yield* Keybindings;
@@ -947,6 +949,8 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             importCodexSession(input).pipe(
               Effect.provideService(ServerSettingsService, serverSettings),
               Effect.provideService(OrchestrationEngineService, orchestrationEngine),
+              Effect.provideService(ProjectionSnapshotQuery, projectionSnapshotQuery),
+              Effect.provideService(Path.Path, path),
               Effect.provideService(ProviderService, providerService),
             ),
             { "rpc.aggregate": "codex-sessions" },
