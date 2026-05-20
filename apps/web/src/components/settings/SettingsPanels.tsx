@@ -663,6 +663,34 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
+          title="Changed files"
+          description="Choose whether assistant changed-file trees start expanded or collapsed."
+          resetAction={
+            settings.changedFilesExpandedByDefault !==
+            DEFAULT_UNIFIED_SETTINGS.changedFilesExpandedByDefault ? (
+              <SettingResetButton
+                label="changed files"
+                onClick={() =>
+                  updateSettings({
+                    changedFilesExpandedByDefault:
+                      DEFAULT_UNIFIED_SETTINGS.changedFilesExpandedByDefault,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.changedFilesExpandedByDefault}
+              onCheckedChange={(checked) =>
+                updateSettings({ changedFilesExpandedByDefault: Boolean(checked) })
+              }
+              aria-label="Expand changed files by default"
+            />
+          }
+        />
+
+        <SettingsRow
           title="Diff line wrapping"
           description="Set the default wrap state when the diff panel opens."
           resetAction={

@@ -761,6 +761,29 @@ describe("GeneralSettingsPanel observability", () => {
       .toBeInTheDocument();
   });
 
+  it("persists the changed-files default expansion preference", async () => {
+    const setClientSettings = vi.fn().mockResolvedValue(undefined);
+    window.desktopBridge = {
+      ...createDesktopBridgeStub(),
+      setClientSettings,
+    };
+    setServerConfigSnapshot(createBaseServerConfig());
+
+    mounted = await renderWithTestRouter(
+      <AppAtomRegistryProvider>
+        <GeneralSettingsPanel />
+      </AppAtomRegistryProvider>,
+    );
+
+    await page.getByLabelText("Expand changed files by default").click();
+
+    await vi.waitFor(() => {
+      expect(setClientSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ changedFilesExpandedByDefault: true }),
+      );
+    });
+  });
+
   it("creates and shows a pairing link when network access is enabled", async () => {
     window.desktopBridge = createDesktopBridgeStub({
       serverExposureState: {
