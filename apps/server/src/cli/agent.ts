@@ -1,4 +1,5 @@
 import {
+  CHAT_ATTACHMENT_MAX_FILE_BYTES,
   CommandId,
   MessageId,
   ModelSelection,
@@ -9,6 +10,7 @@ import {
   RuntimeMode,
   ThreadId,
   type UploadChatAttachment,
+  type UploadChatImageAttachment,
   type OrchestrationProject,
   type OrchestrationReadModel,
   type OrchestrationThread,
@@ -80,7 +82,9 @@ const interactionModeFlag = Flag.choice("interaction-mode", ProviderInteractionM
   Flag.withDefault("default" as const),
 );
 const attachFlag = Flag.string("attach").pipe(
-  Flag.withDescription("Image file to attach to the turn. Repeat for multiple images."),
+  Flag.withDescription(
+    "File to attach. `agent send` accepts images; `agent post` accepts display/download attachments.",
+  ),
   Flag.between(0, PROVIDER_SEND_TURN_MAX_ATTACHMENTS),
 );
 
@@ -230,19 +234,33 @@ function withModelOverride(
   });
 }
 
-const readAttachmentFile = (rawPath: string) =>
+type AttachmentReadMode = "provider-image" | "display";
+
+function displayAttachmentTypeForMime(mimeType: string): UploadChatAttachment["type"] {
+  if (mimeType.startsWith("video/")) {
+    return "video";
+  }
+  if (mimeType.startsWith("image/") && isSupportedProviderImageInputMimeType(mimeType)) {
+    return "image";
+  }
+  return "file";
+}
+
+const readAttachmentFile = (rawPath: string, mode: AttachmentReadMode) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const filePath = path.resolve(rawPath);
     const name = path.basename(filePath);
-    const mimeType = (Mime.getType(filePath) ?? "").toLowerCase();
-    if (!mimeType.startsWith("image/")) {
+    const mimeType = (Mime.getType(filePath) ?? "application/octet-stream").toLowerCase();
+    const attachmentType =
+      mode === "provider-image" ? ("image" as const) : displayAttachmentTypeForMime(mimeType);
+    if (mode === "provider-image" && !mimeType.startsWith("image/")) {
       return yield* new OrchestrationCliError({
-        message: `Only image attachments are supported by agent attachment commands. '${rawPath}' resolved to '${mimeType || "unknown"}'.`,
+        message: `Only image attachments are supported by agent send. '${rawPath}' resolved to '${mimeType}'.`,
       });
     }
-    if (!isSupportedProviderImageInputMimeType(mimeType)) {
+    if (mode === "provider-image" && !isSupportedProviderImageInputMimeType(mimeType)) {
       return yield* new OrchestrationCliError({
         message: `Unsupported image attachment type '${mimeType}'. Supported image types: ${supportedProviderImageInputMimeTypesLabel()}.`,
       });
@@ -261,14 +279,18 @@ const readAttachmentFile = (rawPath: string) =>
         message: `Attachment '${rawPath}' is empty.`,
       });
     }
-    if (bytes.byteLength > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
+    const maxBytes =
+      attachmentType === "image"
+        ? PROVIDER_SEND_TURN_MAX_IMAGE_BYTES
+        : CHAT_ATTACHMENT_MAX_FILE_BYTES;
+    if (bytes.byteLength > maxBytes) {
       return yield* new OrchestrationCliError({
-        message: `Attachment '${rawPath}' is ${bytes.byteLength} bytes, which exceeds the ${PROVIDER_SEND_TURN_MAX_IMAGE_BYTES} byte image limit.`,
+        message: `Attachment '${rawPath}' is ${bytes.byteLength} bytes, which exceeds the ${maxBytes} byte attachment limit.`,
       });
     }
 
     return {
-      type: "image",
+      type: attachmentType,
       name,
       mimeType,
       sizeBytes: bytes.byteLength,
@@ -278,9 +300,17 @@ const readAttachmentFile = (rawPath: string) =>
 
 const readAttachmentFiles = (
   attachmentPaths: ReadonlyArray<string>,
+  mode: AttachmentReadMode,
 ): Effect.Effect<ReadonlyArray<UploadChatAttachment>, OrchestrationCliError> =>
-  Effect.forEach(attachmentPaths, readAttachmentFile, { concurrency: 1 }).pipe(
-    Effect.provide(NodeServices.layer),
+  Effect.forEach(attachmentPaths, (attachmentPath) => readAttachmentFile(attachmentPath, mode), {
+    concurrency: 1,
+  }).pipe(Effect.provide(NodeServices.layer));
+
+const readProviderImageAttachmentFiles = (
+  attachmentPaths: ReadonlyArray<string>,
+): Effect.Effect<ReadonlyArray<UploadChatImageAttachment>, OrchestrationCliError> =>
+  readAttachmentFiles(attachmentPaths, "provider-image").pipe(
+    Effect.map((attachments) => attachments as ReadonlyArray<UploadChatImageAttachment>),
   );
 
 function formatAgentList(snapshot: OrchestrationReadModel, projectFilter?: string): string {
@@ -434,7 +464,7 @@ const agentSendCommand = Command.make("send", {
       Effect.gen(function* () {
         yield* requireLiveServer(context.mode, "Agent send");
         const thread = yield* resolveThread(context, flags.thread);
-        const attachments = yield* readAttachmentFiles(flags.attach);
+        const attachments = yield* readProviderImageAttachmentFiles(flags.attach);
         const createdAt = yield* nowIso;
         const provider = Option.getOrUndefined(flags.provider);
         const model = Option.getOrUndefined(flags.model);
@@ -483,7 +513,7 @@ const agentPostCommand = Command.make("post", {
       Effect.gen(function* () {
         yield* requireLiveServer(context.mode, "Agent post");
         const thread = yield* resolveThread(context, flags.thread);
-        const attachments = yield* readAttachmentFiles(flags.attach);
+        const attachments = yield* readAttachmentFiles(flags.attach, "display");
         const createdAt = yield* nowIso;
 
         yield* context.dispatch({

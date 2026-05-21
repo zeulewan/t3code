@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 
+import Mime from "@effect/platform-node/Mime";
 import type { ChatAttachment } from "@t3tools/contracts";
 
 import {
@@ -10,7 +11,33 @@ import {
 } from "./attachmentPaths.ts";
 import { inferImageExtension, SAFE_IMAGE_FILE_EXTENSIONS } from "./imageMime.ts";
 
-const ATTACHMENT_FILENAME_EXTENSIONS = [...SAFE_IMAGE_FILE_EXTENSIONS, ".bin"];
+const SAFE_NON_IMAGE_FILE_EXTENSIONS = new Set([
+  ".aac",
+  ".csv",
+  ".gifv",
+  ".gz",
+  ".json",
+  ".m4v",
+  ".md",
+  ".mov",
+  ".mp3",
+  ".mp4",
+  ".mpeg",
+  ".oga",
+  ".ogg",
+  ".ogv",
+  ".pdf",
+  ".tar",
+  ".txt",
+  ".wav",
+  ".webm",
+  ".zip",
+]);
+const ATTACHMENT_FILENAME_EXTENSIONS = [
+  ...SAFE_IMAGE_FILE_EXTENSIONS,
+  ...SAFE_NON_IMAGE_FILE_EXTENSIONS,
+  ".bin",
+];
 const ATTACHMENT_ID_THREAD_SEGMENT_MAX_CHARS = 80;
 const ATTACHMENT_ID_THREAD_SEGMENT_PATTERN = "[a-z0-9_]+(?:-[a-z0-9_]+)*";
 const ATTACHMENT_ID_UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
@@ -63,7 +90,31 @@ export function attachmentRelativePath(attachment: ChatAttachment): string {
       });
       return `${attachment.id}${extension}`;
     }
+    case "video":
+    case "file": {
+      const extension = inferFileExtension({
+        mimeType: attachment.mimeType,
+        fileName: attachment.name,
+      });
+      return `${attachment.id}${extension}`;
+    }
   }
+}
+
+function inferFileExtension(input: { mimeType: string; fileName?: string }): string {
+  const fromMimeExtension = Mime.getExtension(input.mimeType);
+  if (fromMimeExtension && SAFE_NON_IMAGE_FILE_EXTENSIONS.has(fromMimeExtension)) {
+    return fromMimeExtension;
+  }
+
+  const fileName = input.fileName?.trim() ?? "";
+  const extensionMatch = /\.([a-z0-9]{1,8})$/i.exec(fileName);
+  const fileNameExtension = extensionMatch ? `.${extensionMatch[1]!.toLowerCase()}` : "";
+  if (SAFE_NON_IMAGE_FILE_EXTENSIONS.has(fileNameExtension)) {
+    return fileNameExtension;
+  }
+
+  return ".bin";
 }
 
 export function resolveAttachmentPath(input: {
