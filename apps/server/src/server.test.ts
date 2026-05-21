@@ -1179,6 +1179,48 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   );
 
   it.effect(
+    "clears stale browser session cookies when the session endpoint sees an invalid token",
+    () =>
+      Effect.gen(function* () {
+        yield* buildAppUnderTest();
+
+        const { response: bootstrapResponse, cookie: setCookie } = yield* bootstrapBrowserSession();
+
+        assert.equal(bootstrapResponse.status, 200);
+        assert.isDefined(setCookie);
+
+        const sessionCookieHeader = setCookie?.split(";")[0] ?? "";
+        const separatorIndex = sessionCookieHeader.indexOf("=");
+        assert.isTrue(separatorIndex > 0);
+
+        const cookieName = sessionCookieHeader.slice(0, separatorIndex);
+        const cookieValue = sessionCookieHeader.slice(separatorIndex + 1);
+        assert.isTrue(cookieValue.length > 0);
+
+        const tamperedCookieHeader = `${cookieName}=${cookieValue.slice(0, -1)}${cookieValue.at(-1) === "a" ? "b" : "a"}`;
+
+        const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
+        const sessionResponse = yield* Effect.promise(() =>
+          fetch(sessionUrl, {
+            headers: {
+              cookie: tamperedCookieHeader,
+            },
+          }),
+        );
+        const sessionBody = (yield* Effect.promise(() => sessionResponse.json())) as {
+          readonly authenticated: boolean;
+        };
+        const clearedCookie = sessionResponse.headers.get("set-cookie");
+
+        assert.equal(sessionResponse.status, 200);
+        assert.equal(sessionBody.authenticated, false);
+        assert.isDefined(clearedCookie);
+        assertInclude(clearedCookie ?? "", `${cookieName}=`);
+        assertInclude(clearedCookie ?? "", "Expires=Thu, 01 Jan 1970 00:00:00 GMT");
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
     "bootstraps a bearer session and authenticates the session endpoint via authorization header",
     () =>
       Effect.gen(function* () {
