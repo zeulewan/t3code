@@ -829,6 +829,10 @@ describe("ProviderRuntimeIngestion", () => {
           toolCallId: "tool-command-1",
           kind: "execute",
           command: "bun run lint",
+          item: {
+            command: "bun run lint",
+            aggregatedOutput: "lint output".repeat(1_000),
+          },
         },
       },
     });
@@ -845,9 +849,19 @@ describe("ProviderRuntimeIngestion", () => {
       activity?.payload && typeof activity.payload === "object"
         ? (activity.payload as Record<string, unknown>)
         : undefined;
+    const data =
+      payload?.data && typeof payload.data === "object"
+        ? (payload.data as Record<string, unknown>)
+        : undefined;
+    const item =
+      data?.item && typeof data.item === "object"
+        ? (data.item as Record<string, unknown>)
+        : undefined;
 
     expect(activity?.summary).toBe("Ran command");
     expect(payload?.detail).toBe("bun run lint");
+    expect(item?.command).toBe("bun run lint");
+    expect(item?.aggregatedOutput).toBeUndefined();
   });
 
   it("uses structured read-file paths when available", async () => {

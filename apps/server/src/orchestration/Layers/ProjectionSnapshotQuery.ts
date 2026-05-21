@@ -454,7 +454,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           tone,
           kind,
           summary,
-          payload_json AS "payload",
+          json_remove(payload_json, '$.data.item.aggregatedOutput') AS "payload",
           sequence,
           created_at AS "createdAt"
         FROM projection_thread_activities
@@ -819,7 +819,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           tone,
           kind,
           summary,
-          payload_json AS "payload",
+          json_remove(payload_json, '$.data.item.aggregatedOutput') AS "payload",
           sequence,
           created_at AS "createdAt"
         FROM projection_thread_activities
