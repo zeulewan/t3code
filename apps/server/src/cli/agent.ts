@@ -239,7 +239,7 @@ const readAttachmentFile = (rawPath: string) =>
     const mimeType = (Mime.getType(filePath) ?? "").toLowerCase();
     if (!mimeType.startsWith("image/")) {
       return yield* new OrchestrationCliError({
-        message: `Only image attachments are supported by agent send. '${rawPath}' resolved to '${mimeType || "unknown"}'.`,
+        message: `Only image attachments are supported by agent attachment commands. '${rawPath}' resolved to '${mimeType || "unknown"}'.`,
       });
     }
     if (!isSupportedProviderImageInputMimeType(mimeType)) {
@@ -469,6 +469,46 @@ const agentSendCommand = Command.make("send", {
   ),
 );
 
+const agentPostCommand = Command.make("post", {
+  ...projectLocationFlags,
+  thread: Argument.string("thread").pipe(Argument.withDescription("Thread id or title.")),
+  message: Argument.string("message").pipe(
+    Argument.withDescription("Assistant-authored message to post."),
+  ),
+  attach: attachFlag,
+}).pipe(
+  Command.withDescription("Post an assistant-authored message to an existing agent thread."),
+  Command.withHandler((flags) =>
+    runWithOrchestrationCli(flags, (context: OrchestrationCliContext) =>
+      Effect.gen(function* () {
+        yield* requireLiveServer(context.mode, "Agent post");
+        const thread = yield* resolveThread(context, flags.thread);
+        const attachments = yield* readAttachmentFiles(flags.attach);
+        const createdAt = yield* nowIso;
+
+        yield* context.dispatch({
+          type: "thread.message.import",
+          commandId: newCommandId(),
+          threadId: thread.id,
+          message: {
+            messageId: newMessageId(),
+            role: "assistant",
+            text: flags.message,
+            ...(attachments.length > 0 ? { attachments } : {}),
+            turnId: null,
+            createdAt,
+          },
+          createdAt,
+        });
+
+        return attachments.length === 0
+          ? `Posted assistant message to ${thread.id}.`
+          : `Posted assistant message to ${thread.id} with ${attachments.length} attachment(s).`;
+      }),
+    ),
+  ),
+);
+
 const agentStopCommand = Command.make("stop", {
   ...projectLocationFlags,
   thread: Argument.string("thread").pipe(Argument.withDescription("Thread id or title.")),
@@ -560,6 +600,7 @@ export const agentCommand = Command.make("agent").pipe(
     agentListCommand,
     agentSpawnCommand,
     agentSendCommand,
+    agentPostCommand,
     agentStopCommand,
     agentRenameCommand,
     agentModelCommand,
