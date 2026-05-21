@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import {
+  CHAT_ATTACHMENT_MAX_FILE_BYTES,
   type ChatAttachment,
   type ClientOrchestrationCommand,
   type OrchestrationCommand,
@@ -71,22 +72,44 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
     const persistUploadAttachments = (input: {
       readonly threadId: ThreadId;
       readonly attachments: ReadonlyArray<UploadChatAttachment>;
+      readonly allowGenericAttachments: boolean;
     }): Effect.Effect<ReadonlyArray<ChatAttachment>, OrchestrationDispatchCommandError> =>
       Effect.forEach(
         input.attachments,
         (attachment) =>
           Effect.gen(function* () {
             const parsed = parseBase64DataUrl(attachment.dataUrl);
-            if (!parsed || !parsed.mimeType.startsWith("image/")) {
+            if (!parsed) {
               return yield* new OrchestrationDispatchCommandError({
-                message: `Invalid image attachment payload for '${attachment.name}'.`,
+                message: `Invalid attachment payload for '${attachment.name}'.`,
+              });
+            }
+
+            const mimeType = parsed.mimeType.toLowerCase();
+            if (attachment.type === "image" && !mimeType.startsWith("image/")) {
+              return yield* new OrchestrationDispatchCommandError({
+                message: `Invalid image attachment MIME type '${mimeType}' for '${attachment.name}'.`,
+              });
+            }
+            if (attachment.type === "video" && !mimeType.startsWith("video/")) {
+              return yield* new OrchestrationDispatchCommandError({
+                message: `Invalid video attachment MIME type '${mimeType}' for '${attachment.name}'.`,
+              });
+            }
+            if (!input.allowGenericAttachments && attachment.type !== "image") {
+              return yield* new OrchestrationDispatchCommandError({
+                message: `Only image attachments can be sent to provider turns.`,
               });
             }
 
             const bytes = Buffer.from(parsed.base64, "base64");
-            if (bytes.byteLength === 0 || bytes.byteLength > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
+            const maxBytes =
+              attachment.type === "image"
+                ? PROVIDER_SEND_TURN_MAX_IMAGE_BYTES
+                : CHAT_ATTACHMENT_MAX_FILE_BYTES;
+            if (bytes.byteLength === 0 || bytes.byteLength > maxBytes) {
               return yield* new OrchestrationDispatchCommandError({
-                message: `Image attachment '${attachment.name}' is empty or too large.`,
+                message: `Attachment '${attachment.name}' is empty or too large.`,
               });
             }
 
@@ -98,12 +121,12 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
             }
 
             const persistedAttachment = {
-              type: "image" as const,
+              type: attachment.type,
               id: attachmentId,
               name: attachment.name,
-              mimeType: parsed.mimeType.toLowerCase(),
+              mimeType,
               sizeBytes: bytes.byteLength,
-            };
+            } satisfies ChatAttachment;
 
             const attachmentPath = resolveAttachmentPath({
               attachmentsDir: serverConfig.attachmentsDir,
@@ -141,6 +164,7 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
       const normalizedAttachments = yield* persistUploadAttachments({
         threadId: command.threadId,
         attachments: command.message.attachments,
+        allowGenericAttachments: false,
       });
 
       return {
@@ -156,6 +180,7 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
       const normalizedAttachments = yield* persistUploadAttachments({
         threadId: command.threadId,
         attachments: command.message.attachments ?? [],
+        allowGenericAttachments: true,
       });
 
       return {

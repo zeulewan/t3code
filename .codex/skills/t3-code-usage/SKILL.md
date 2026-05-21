@@ -74,7 +74,7 @@ Post an assistant-authored message to a thread without starting a provider turn:
 node apps/server/src/bin.ts --log-level error agent post <thread-or-handle> '<message>' --attach /path/to/image.png --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
 ```
 
-Use `agent post` when the agent is manually sending something as itself. This updates T3 chat history and UI, but it does not inject the posted content into the provider's native model session.
+Use `agent post` when the agent is manually sending something as itself. It accepts images, videos, and generic file download attachments. This updates T3 chat history and UI, but it does not inject the posted content into the provider's native model session.
 
 Spawned agents are seeded with comms instructions. Custom handles are not the main path; rename/register through the supported CLI flow when needed.
 
