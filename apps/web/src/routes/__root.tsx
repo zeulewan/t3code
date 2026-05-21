@@ -138,7 +138,9 @@ function RootRouteView() {
       <AnchoredToastProvider>
         {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
         {primaryEnvironmentAuthenticated ? <ServerStateBootstrap /> : null}
-        <EnvironmentConnectionManagerBootstrap />
+        <EnvironmentConnectionManagerBootstrap
+          connectPrimaryEnvironment={primaryEnvironmentAuthenticated}
+        />
         <SshPasswordPromptDialog />
         <HostedStaticEnvironmentBootstrap />
         {primaryEnvironmentAuthenticated ? <EventRouter /> : null}
@@ -272,12 +274,16 @@ function AuthenticatedTracingBootstrap() {
   return null;
 }
 
-function EnvironmentConnectionManagerBootstrap() {
+function EnvironmentConnectionManagerBootstrap(props: {
+  readonly connectPrimaryEnvironment: boolean;
+}) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    return startEnvironmentConnectionService(queryClient);
-  }, [queryClient]);
+    return startEnvironmentConnectionService(queryClient, {
+      connectPrimaryEnvironment: props.connectPrimaryEnvironment,
+    });
+  }, [props.connectPrimaryEnvironment, queryClient]);
 
   return null;
 }
