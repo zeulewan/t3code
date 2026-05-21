@@ -201,7 +201,19 @@ export const authHttpApiLayer = HttpApiBuilder.group(
           function* (args) {
             yield* annotateEnvironmentRequest(args.endpoint.name);
             const request = yield* HttpServerRequest.HttpServerRequest;
-            return yield* serverAuth.getSessionState(request);
+            const session = yield* serverAuth.getSessionState(request);
+            if (!session.authenticated && request.cookies[sessions.cookieName]) {
+              yield* HttpEffect.appendPreResponseHandler((_request, response) =>
+                response.pipe(
+                  HttpServerResponse.expireCookie(sessions.cookieName, {
+                    httpOnly: true,
+                    path: "/",
+                    sameSite: "lax",
+                  }),
+                ),
+              );
+            }
+            return session;
           },
           Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
             failEnvironmentInternal("internal_error", error),
