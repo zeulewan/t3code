@@ -473,6 +473,37 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
           assert.isTrue((attachment?.sizeBytes ?? 0) > 0);
           assert.isTrue((attachment?.id.length ?? 0) > 0);
 
+          const postOutput = yield* captureStdout(
+            runCli([
+              "agent",
+              "post",
+              "renamed-agent",
+              "Assistant image attached.",
+              "--attach",
+              imagePath,
+              "--base-dir",
+              baseDir,
+            ]),
+          );
+          assert.isTrue(
+            postOutput.output.includes(
+              `Posted assistant message to ${thread?.id} with 1 attachment(s).`,
+            ),
+          );
+
+          const snapshotAfterPost = yield* readPersistedSnapshot(baseDir);
+          const postedThread = snapshotAfterPost.threads.find((entry) => entry.id === thread?.id);
+          const assistantImageMessage = postedThread?.messages.find(
+            (message) =>
+              message.role === "assistant" && message.text === "Assistant image attached.",
+          );
+          const assistantAttachment = assistantImageMessage?.attachments?.[0];
+          assert.equal(assistantAttachment?.type, "image");
+          assert.equal(assistantAttachment?.name, "cli-attachment.png");
+          assert.equal(assistantAttachment?.mimeType, "image/png");
+          assert.isTrue((assistantAttachment?.sizeBytes ?? 0) > 0);
+          assert.isTrue((assistantAttachment?.id.length ?? 0) > 0);
+
           const textPath = join(workspaceRoot, "not-an-image.txt");
           writeFileSync(textPath, "not an image");
           const attachmentError = yield* runCliWithRuntime([
