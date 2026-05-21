@@ -44,6 +44,7 @@ import {
   ChevronRightIcon,
   ChevronUpIcon,
   CircleAlertIcon,
+  DownloadIcon,
   EyeIcon,
   GlobeIcon,
   HammerIcon,
@@ -459,6 +460,93 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
   );
 });
 
+function formatAttachmentSize(sizeBytes: number): string {
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB"] as const;
+  let value = sizeBytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const fractionDigits = unitIndex === 0 || value >= 10 ? 0 : 1;
+  return `${value.toFixed(fractionDigits)} ${units[unitIndex]}`;
+}
+
+function ImageAttachmentGrid({
+  attachments,
+  className,
+  maxImageHeightClassName,
+  onImageExpand,
+}: {
+  attachments: ReadonlyArray<NonNullable<TimelineMessage["attachments"]>[number]>;
+  className?: string;
+  maxImageHeightClassName: string;
+  onImageExpand: (preview: ExpandedImagePreview) => void;
+}) {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={cn("grid max-w-[420px] grid-cols-2 gap-2", className)}>
+      {attachments.map((image) => {
+        const sizeLabel = formatAttachmentSize(image.sizeBytes);
+        const downloadUrl = image.downloadUrl ?? image.previewUrl;
+        return (
+          <div
+            key={image.id}
+            className="relative overflow-hidden rounded-lg border border-border/80 bg-background/70"
+          >
+            {image.previewUrl ? (
+              <button
+                type="button"
+                className="block h-full w-full cursor-zoom-in"
+                aria-label={`Preview ${image.name}`}
+                onClick={() => {
+                  const preview = buildExpandedImagePreview(attachments, image.id);
+                  if (!preview) return;
+                  onImageExpand(preview);
+                }}
+              >
+                <img
+                  src={image.previewUrl}
+                  alt={image.name}
+                  className={cn("block h-auto w-full object-cover", maxImageHeightClassName)}
+                  loading="lazy"
+                />
+              </button>
+            ) : (
+              <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
+                {image.name}
+              </div>
+            )}
+            {downloadUrl ? (
+              <a
+                href={downloadUrl}
+                download={image.name}
+                className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-1 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground shadow-sm ring-1 ring-border/60 backdrop-blur transition-colors hover:bg-background"
+                aria-label={`Download ${image.name} (${sizeLabel})`}
+                title={`Download ${image.name} (${sizeLabel})`}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <DownloadIcon className="size-3" />
+                <span>{sizeLabel}</span>
+              </a>
+            ) : (
+              <span className="absolute bottom-1.5 right-1.5 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground shadow-sm ring-1 ring-border/60 backdrop-blur">
+                {sizeLabel}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const userImages = row.message.attachments ?? [];
@@ -480,39 +568,12 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   return (
     <div className="group flex flex-col items-end gap-1">
       <div className="relative max-w-[80%] rounded-2xl border border-border bg-secondary p-3">
-        {regularImages.length > 0 && (
-          <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-            {regularImages.map((image: NonNullable<TimelineMessage["attachments"]>[number]) => (
-              <div
-                key={image.id}
-                className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
-              >
-                {image.previewUrl ? (
-                  <button
-                    type="button"
-                    className="h-full w-full cursor-zoom-in"
-                    aria-label={`Preview ${image.name}`}
-                    onClick={() => {
-                      const preview = buildExpandedImagePreview(regularImages, image.id);
-                      if (!preview) return;
-                      ctx.onImageExpand(preview);
-                    }}
-                  >
-                    <img
-                      src={image.previewUrl}
-                      alt={image.name}
-                      className="block h-auto max-h-[220px] w-full object-cover"
-                    />
-                  </button>
-                ) : (
-                  <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
-                    {image.name}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+        <ImageAttachmentGrid
+          attachments={regularImages}
+          className="mb-2"
+          maxImageHeightClassName="max-h-[220px]"
+          onImageExpand={ctx.onImageExpand}
+        />
         {previewAnnotations.map((annotation, index) => (
           <UserMessagePreviewAnnotationCard
             key={annotation.id}
@@ -607,6 +668,7 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+  const assistantImages = row.message.attachments ?? [];
 
   return (
     <>
@@ -617,6 +679,12 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           threadRef={ctx.threadRef ?? undefined}
           isStreaming={Boolean(row.message.streaming)}
           skills={ctx.skills}
+        />
+        <ImageAttachmentGrid
+          attachments={assistantImages}
+          className="mt-3"
+          maxImageHeightClassName="max-h-[280px]"
+          onImageExpand={ctx.onImageExpand}
         />
         <AssistantChangedFilesSection
           turnSummary={row.assistantTurnDiffSummary}
