@@ -4,18 +4,29 @@ import {
   ModelSelection,
   ProviderInstanceId,
   ProviderInteractionMode,
+  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   RuntimeMode,
   ThreadId,
+  type UploadChatAttachment,
   type OrchestrationProject,
   type OrchestrationReadModel,
   type OrchestrationThread,
 } from "@t3tools/contracts";
+import Mime from "@effect/platform-node/Mime";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 
 import { makeThreadCommsHandle } from "../commsHandles.ts";
+import {
+  isSupportedProviderImageInputMimeType,
+  supportedProviderImageInputMimeTypesLabel,
+} from "../provider/imageAttachmentSupport.ts";
 import { projectLocationFlags } from "./config.ts";
 import {
   OrchestrationCliError,
@@ -67,6 +78,10 @@ const runtimeModeFlag = Flag.choice("runtime-mode", RuntimeMode.literals).pipe(
 const interactionModeFlag = Flag.choice("interaction-mode", ProviderInteractionMode.literals).pipe(
   Flag.withDescription("Interaction mode for the provider session."),
   Flag.withDefault("default" as const),
+);
+const attachFlag = Flag.string("attach").pipe(
+  Flag.withDescription("Image file to attach to the turn. Repeat for multiple images."),
+  Flag.between(0, PROVIDER_SEND_TURN_MAX_ATTACHMENTS),
 );
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -215,6 +230,59 @@ function withModelOverride(
   });
 }
 
+const readAttachmentFile = (rawPath: string) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const filePath = path.resolve(rawPath);
+    const name = path.basename(filePath);
+    const mimeType = (Mime.getType(filePath) ?? "").toLowerCase();
+    if (!mimeType.startsWith("image/")) {
+      return yield* new OrchestrationCliError({
+        message: `Only image attachments are supported by agent send. '${rawPath}' resolved to '${mimeType || "unknown"}'.`,
+      });
+    }
+    if (!isSupportedProviderImageInputMimeType(mimeType)) {
+      return yield* new OrchestrationCliError({
+        message: `Unsupported image attachment type '${mimeType}'. Supported image types: ${supportedProviderImageInputMimeTypesLabel()}.`,
+      });
+    }
+
+    const bytes = yield* fileSystem.readFile(filePath).pipe(
+      Effect.mapError(
+        (error) =>
+          new OrchestrationCliError({
+            message: `Could not read attachment '${rawPath}': ${String(error.message)}`,
+          }),
+      ),
+    );
+    if (bytes.byteLength === 0) {
+      return yield* new OrchestrationCliError({
+        message: `Attachment '${rawPath}' is empty.`,
+      });
+    }
+    if (bytes.byteLength > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
+      return yield* new OrchestrationCliError({
+        message: `Attachment '${rawPath}' is ${bytes.byteLength} bytes, which exceeds the ${PROVIDER_SEND_TURN_MAX_IMAGE_BYTES} byte image limit.`,
+      });
+    }
+
+    return {
+      type: "image",
+      name,
+      mimeType,
+      sizeBytes: bytes.byteLength,
+      dataUrl: `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`,
+    } satisfies UploadChatAttachment;
+  });
+
+const readAttachmentFiles = (
+  attachmentPaths: ReadonlyArray<string>,
+): Effect.Effect<ReadonlyArray<UploadChatAttachment>, OrchestrationCliError> =>
+  Effect.forEach(attachmentPaths, readAttachmentFile, { concurrency: 1 }).pipe(
+    Effect.provide(NodeServices.layer),
+  );
+
 function formatAgentList(snapshot: OrchestrationReadModel, projectFilter?: string): string {
   const project =
     projectFilter && projectFilter.trim().length > 0
@@ -358,6 +426,7 @@ const agentSendCommand = Command.make("send", {
   provider: optionalProviderFlag,
   model: optionalModelFlag,
   effort: optionalEffortFlag,
+  attach: attachFlag,
 }).pipe(
   Command.withDescription("Send a user turn to an existing agent thread."),
   Command.withHandler((flags) =>
@@ -365,6 +434,7 @@ const agentSendCommand = Command.make("send", {
       Effect.gen(function* () {
         yield* requireLiveServer(context.mode, "Agent send");
         const thread = yield* resolveThread(context, flags.thread);
+        const attachments = yield* readAttachmentFiles(flags.attach);
         const createdAt = yield* nowIso;
         const provider = Option.getOrUndefined(flags.provider);
         const model = Option.getOrUndefined(flags.model);
@@ -382,7 +452,7 @@ const agentSendCommand = Command.make("send", {
             messageId: newMessageId(),
             role: "user",
             text: flags.message,
-            attachments: [],
+            attachments,
           },
           ...(selection ? { modelSelection: selection } : {}),
           titleSeed: thread.title,
@@ -391,7 +461,9 @@ const agentSendCommand = Command.make("send", {
           createdAt,
         });
 
-        return `Sent turn to ${thread.id}.`;
+        return attachments.length === 0
+          ? `Sent turn to ${thread.id}.`
+          : `Sent turn to ${thread.id} with ${attachments.length} attachment(s).`;
       }),
     ),
   ),

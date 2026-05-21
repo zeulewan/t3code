@@ -60,6 +60,14 @@ Send to an existing agent by thread id, title, or comms handle:
 node apps/server/src/bin.ts --log-level error agent send <thread-or-handle> '<message>' --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
 ```
 
+Attach one or more provider-safe images to an agent message:
+
+```sh
+node apps/server/src/bin.ts --log-level error agent send <thread-or-handle> '<message>' --attach /path/to/image.png --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
+```
+
+`agent send --attach` currently supports GIF, JPEG, PNG, and WebP images. Generic non-image files are not supported by this CLI/schema path yet.
+
 Spawned agents are seeded with comms instructions. Custom handles are not the main path; rename/register through the supported CLI flow when needed.
 
 ## Comms CLI
