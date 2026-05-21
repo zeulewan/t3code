@@ -1750,7 +1750,14 @@ export async function ensureEnvironmentConnectionBootstrapped(
   await environmentConnections.get(environmentId)?.ensureBootstrapped();
 }
 
-export function startEnvironmentConnectionService(queryClient: QueryClient): () => void {
+interface StartEnvironmentConnectionServiceOptions {
+  readonly connectPrimaryEnvironment?: boolean;
+}
+
+export function startEnvironmentConnectionService(
+  queryClient: QueryClient,
+  options?: StartEnvironmentConnectionServiceOptions,
+): () => void {
   if (activeService?.queryClient === queryClient) {
     activeService.refCount += 1;
     return () => {
@@ -1783,7 +1790,9 @@ export function startEnvironmentConnectionService(queryClient: QueryClient): () 
   );
   const requestSavedEnvironmentSync = createSavedEnvironmentSyncScheduler();
 
-  maybeCreatePrimaryEnvironmentConnection();
+  if (options?.connectPrimaryEnvironment !== false) {
+    maybeCreatePrimaryEnvironmentConnection();
+  }
 
   const unsubscribeSavedEnvironments = useSavedEnvironmentRegistryStore.subscribe(() => {
     if (!hasSavedEnvironmentRegistryHydrated()) {

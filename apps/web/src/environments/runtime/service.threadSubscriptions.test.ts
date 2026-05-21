@@ -277,6 +277,24 @@ describe("retainThreadDetailSubscription", () => {
     await resetEnvironmentServiceForTests();
   });
 
+  it("skips primary connection startup when primary bootstrap is disabled", async () => {
+    const {
+      listEnvironmentConnections,
+      resetEnvironmentServiceForTests,
+      startEnvironmentConnectionService,
+    } = await import("./service");
+
+    const stop = startEnvironmentConnectionService(new QueryClient(), {
+      connectPrimaryEnvironment: false,
+    });
+
+    expect(mockCreateEnvironmentConnection).not.toHaveBeenCalled();
+    expect(listEnvironmentConnections()).toEqual([]);
+
+    stop();
+    await resetEnvironmentServiceForTests();
+  });
+
   it("keeps non-idle thread detail subscriptions attached until the thread becomes idle", async () => {
     const {
       retainThreadDetailSubscription,

@@ -38,11 +38,22 @@ export const authSessionRouteLayer = HttpRouter.add(
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const serverAuth = yield* ServerAuth;
+    const sessions = yield* SessionCredentialService;
     const session = yield* serverAuth.getSessionState(request);
-    return HttpServerResponse.jsonUnsafe(session, {
+    const response = HttpServerResponse.jsonUnsafe(session, {
       status: 200,
       headers: browserApiCorsHeaders,
     });
+    if (!session.authenticated && request.cookies[sessions.cookieName]) {
+      return yield* response.pipe(
+        HttpServerResponse.expireCookie(sessions.cookieName, {
+          httpOnly: true,
+          path: "/",
+          sameSite: "lax",
+        }),
+      );
+    }
+    return response;
   }),
 );
 
