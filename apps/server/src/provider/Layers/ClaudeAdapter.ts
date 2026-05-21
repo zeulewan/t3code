@@ -84,6 +84,10 @@ import {
 } from "../Errors.ts";
 import { type ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
+import {
+  isSupportedProviderImageInputMimeType,
+  supportedProviderImageInputMimeTypesLabel,
+} from "../imageAttachmentSupport.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJsonString);
 const decodeUnknownJsonStringExit = Schema.decodeUnknownExit(Schema.UnknownFromJsonString);
 
@@ -580,12 +584,6 @@ function titleForTool(itemType: CanonicalItemType): string {
   }
 }
 
-const SUPPORTED_CLAUDE_IMAGE_MIME_TYPES = new Set([
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
 const CLAUDE_SETTING_SOURCES = [
   "user",
   "project",
@@ -656,11 +654,11 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
       continue;
     }
 
-    if (!SUPPORTED_CLAUDE_IMAGE_MIME_TYPES.has(attachment.mimeType)) {
+    if (!isSupportedProviderImageInputMimeType(attachment.mimeType)) {
       return yield* new ProviderAdapterRequestError({
         provider: PROVIDER,
         method: "turn/start",
-        detail: `Unsupported Claude image attachment type '${attachment.mimeType}'.`,
+        detail: `Unsupported Claude image attachment type '${attachment.mimeType}'. Supported image types: ${supportedProviderImageInputMimeTypesLabel()}.`,
       });
     }
 
