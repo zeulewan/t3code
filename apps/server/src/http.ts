@@ -34,6 +34,11 @@ import {
   browserApiCorsHeaders,
 } from "./httpCors.ts";
 
+function sanitizeContentDispositionFilename(fileName: string): string {
+  const sanitized = fileName.replaceAll(/["\\\r\n]/g, "_");
+  return sanitized.length > 0 ? sanitized : "attachment";
+}
+
 const PROJECT_FAVICON_CACHE_CONTROL = "public, max-age=3600";
 const STATIC_INDEX_CACHE_CONTROL = "no-cache";
 const STATIC_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
@@ -167,16 +172,31 @@ export const attachmentsRouteLayer = HttpRouter.add(
       return HttpServerResponse.text("Invalid attachment path", { status: 400 });
     }
 
-    const isIdLookup =
-      !normalizedRelativePath.includes("/") && !normalizedRelativePath.includes(".");
+    const downloadSuffix = "/download";
+    const downloadRequested = normalizedRelativePath.endsWith(downloadSuffix);
+    const lookupRelativePath = downloadRequested
+      ? normalizedRelativePath.slice(0, -downloadSuffix.length)
+      : normalizedRelativePath;
+    if (!lookupRelativePath) {
+      return HttpServerResponse.text("Invalid attachment path", { status: 400 });
+    }
+
+    if (
+      downloadRequested &&
+      (lookupRelativePath.includes("/") || lookupRelativePath.includes("."))
+    ) {
+      return HttpServerResponse.text("Invalid attachment download path", { status: 400 });
+    }
+
+    const isIdLookup = !lookupRelativePath.includes("/") && !lookupRelativePath.includes(".");
     const filePath = isIdLookup
       ? resolveAttachmentPathById({
           attachmentsDir: config.attachmentsDir,
-          attachmentId: normalizedRelativePath,
+          attachmentId: lookupRelativePath,
         })
       : resolveAttachmentRelativePath({
           attachmentsDir: config.attachmentsDir,
-          relativePath: normalizedRelativePath,
+          relativePath: lookupRelativePath,
         });
     if (!filePath) {
       return HttpServerResponse.text(isIdLookup ? "Not Found" : "Invalid attachment path", {
@@ -192,10 +212,19 @@ export const attachmentsRouteLayer = HttpRouter.add(
       return HttpServerResponse.text("Not Found", { status: 404 });
     }
 
+    const path = yield* Path.Path;
+    const downloadFileName = sanitizeContentDispositionFilename(path.basename(filePath));
+
     return yield* HttpServerResponse.file(filePath, {
       status: 200,
       headers: {
         "Cache-Control": "public, max-age=31536000, immutable",
+        ...(downloadRequested
+          ? {
+              "Content-Disposition": `attachment; filename="${downloadFileName}"`,
+              "X-Content-Type-Options": "nosniff",
+            }
+          : {}),
       },
     }).pipe(
       Effect.catch(() =>

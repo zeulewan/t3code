@@ -51,6 +51,10 @@ import {
   type ProviderAdapterError,
 } from "../Errors.ts";
 import { type CodexAdapterShape } from "../Services/CodexAdapter.ts";
+import {
+  isSupportedProviderImageInputMimeType,
+  supportedProviderImageInputMimeTypesLabel,
+} from "../imageAttachmentSupport.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import {
@@ -1474,6 +1478,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     input: ProviderSendTurnInput,
     attachment: NonNullable<ProviderSendTurnInput["attachments"]>[number],
   ) {
+    if (!isSupportedProviderImageInputMimeType(attachment.mimeType)) {
+      return yield* new ProviderAdapterValidationError({
+        provider: PROVIDER,
+        operation: "sendTurn",
+        issue: `Unsupported Codex image attachment type '${attachment.mimeType}'. Supported image types: ${supportedProviderImageInputMimeTypesLabel()}.`,
+      });
+    }
+
     const attachmentPath = resolveAttachmentPath({
       attachmentsDir: serverConfig.attachmentsDir,
       attachment,
