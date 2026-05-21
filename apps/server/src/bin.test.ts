@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off - CLI integration exercises Node HTTP and filesystem boundaries.
 import * as NodeHttp from "node:http";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -34,6 +34,9 @@ import {
 import { WorkspacePathsLive } from "./workspace/Layers/WorkspacePaths.ts";
 import { ServerSecretStoreLive } from "./auth/Layers/ServerSecretStore.ts";
 import { ServerAuthLive } from "./auth/Layers/ServerAuth.ts";
+
+const ONE_PIXEL_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 
 const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
 
@@ -438,6 +441,51 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
             runCli(["agent", "send", "renamed-agent", "Status?", "--base-dir", baseDir]),
           );
           assert.isTrue(sendOutput.output.includes(`Sent turn to ${thread?.id}.`));
+
+          const imagePath = join(workspaceRoot, "cli-attachment.png");
+          writeFileSync(imagePath, Buffer.from(ONE_PIXEL_PNG_BASE64, "base64"));
+
+          const attachmentOutput = yield* captureStdout(
+            runCli([
+              "agent",
+              "send",
+              "renamed-agent",
+              "Image attached.",
+              "--attach",
+              imagePath,
+              "--base-dir",
+              baseDir,
+            ]),
+          );
+          assert.isTrue(
+            attachmentOutput.output.includes(`Sent turn to ${thread?.id} with 1 attachment(s).`),
+          );
+
+          const snapshot = yield* readPersistedSnapshot(baseDir);
+          const updatedThread = snapshot.threads.find((entry) => entry.id === thread?.id);
+          const imageMessage = updatedThread?.messages.find(
+            (message) => message.role === "user" && message.text === "Image attached.",
+          );
+          const attachment = imageMessage?.attachments?.[0];
+          assert.equal(attachment?.type, "image");
+          assert.equal(attachment?.name, "cli-attachment.png");
+          assert.equal(attachment?.mimeType, "image/png");
+          assert.isTrue((attachment?.sizeBytes ?? 0) > 0);
+          assert.isTrue((attachment?.id.length ?? 0) > 0);
+
+          const textPath = join(workspaceRoot, "not-an-image.txt");
+          writeFileSync(textPath, "not an image");
+          const attachmentError = yield* runCliWithRuntime([
+            "agent",
+            "send",
+            "renamed-agent",
+            "This should fail.",
+            "--attach",
+            textPath,
+            "--base-dir",
+            baseDir,
+          ]).pipe(Effect.flip);
+          assert.isTrue(String(attachmentError).includes("Only image attachments are supported"));
         }),
       );
     }),
