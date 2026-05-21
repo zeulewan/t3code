@@ -43,6 +43,7 @@ import { ProjectionThreadSessionRepositoryLive } from "../../persistence/Layers/
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 import { ProjectionThreadRepositoryLive } from "../../persistence/Layers/ProjectionThreads.ts";
 import { ServerConfig } from "../../config.ts";
+import { compactThreadActivityPayload } from "../activityPayload.ts";
 import {
   OrchestrationProjectionPipeline,
   type OrchestrationProjectionPipelineShape,
@@ -925,7 +926,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             tone: event.payload.activity.tone,
             kind: event.payload.activity.kind,
             summary: event.payload.activity.summary,
-            payload: event.payload.activity.payload,
+            payload: compactThreadActivityPayload(event.payload.activity.payload),
             ...(event.payload.activity.sequence !== undefined
               ? { sequence: event.payload.activity.sequence }
               : {}),

@@ -952,7 +952,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
             'info',
             'runtime.note',
             'sequence two',
-            '{"source":"sequence-2"}',
+            '{"source":"sequence-2","data":{"item":{"command":"rg backfill","aggregatedOutput":"large projected output"}}}',
             2,
             '2026-04-01T00:00:04.000Z'
           ),
@@ -1002,7 +1002,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           tone: "info",
           kind: "runtime.note",
           summary: "sequence two",
-          payload: { source: "sequence-2" },
+          payload: { source: "sequence-2", data: { item: { command: "rg backfill" } } },
           turnId: null,
           sequence: 2,
           createdAt: "2026-04-01T00:00:04.000Z",
