@@ -504,6 +504,41 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
           assert.isTrue((assistantAttachment?.sizeBytes ?? 0) > 0);
           assert.isTrue((assistantAttachment?.id.length ?? 0) > 0);
 
+          const videoPath = join(workspaceRoot, "clip.mp4");
+          writeFileSync(videoPath, Buffer.from("fake mp4 test payload"));
+          const videoPostOutput = yield* captureStdout(
+            runCli([
+              "agent",
+              "post",
+              "renamed-agent",
+              "Assistant video attached.",
+              "--attach",
+              videoPath,
+              "--base-dir",
+              baseDir,
+            ]),
+          );
+          assert.isTrue(
+            videoPostOutput.output.includes(
+              `Posted assistant message to ${thread?.id} with 1 attachment(s).`,
+            ),
+          );
+
+          const snapshotAfterVideoPost = yield* readPersistedSnapshot(baseDir);
+          const videoThread = snapshotAfterVideoPost.threads.find(
+            (entry) => entry.id === thread?.id,
+          );
+          const assistantVideoMessage = videoThread?.messages.find(
+            (message) =>
+              message.role === "assistant" && message.text === "Assistant video attached.",
+          );
+          const assistantVideoAttachment = assistantVideoMessage?.attachments?.[0];
+          assert.equal(assistantVideoAttachment?.type, "video");
+          assert.equal(assistantVideoAttachment?.name, "clip.mp4");
+          assert.equal(assistantVideoAttachment?.mimeType, "video/mp4");
+          assert.isTrue((assistantVideoAttachment?.sizeBytes ?? 0) > 0);
+          assert.isTrue((assistantVideoAttachment?.id.length ?? 0) > 0);
+
           const textPath = join(workspaceRoot, "not-an-image.txt");
           writeFileSync(textPath, "not an image");
           const attachmentError = yield* runCliWithRuntime([
