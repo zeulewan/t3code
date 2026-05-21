@@ -117,6 +117,32 @@ function buildUserTimelineEntry(text: string) {
   };
 }
 
+function buildAssistantTimelineEntry() {
+  return {
+    id: "entry-assistant-1",
+    kind: "message" as const,
+    createdAt: MESSAGE_CREATED_AT,
+    message: {
+      id: MessageId.make("message-assistant-1"),
+      role: "assistant" as const,
+      text: "Here is the image.",
+      attachments: [
+        {
+          type: "image" as const,
+          id: "attachment-assistant-1",
+          name: "diagram.png",
+          mimeType: "image/png",
+          sizeBytes: 1_572_864,
+          previewUrl: "/attachments/attachment-assistant-1",
+          downloadUrl: "/attachments/attachment-assistant-1/download",
+        },
+      ],
+      createdAt: MESSAGE_CREATED_AT,
+      streaming: false,
+    },
+  };
+}
+
 describe("MessagesTimeline", () => {
   it("renders collapse controls for long user messages", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
@@ -144,6 +170,19 @@ describe("MessagesTimeline", () => {
 
     expect(markup).not.toContain("Show full message");
     expect(markup).toContain('data-user-message-collapsible="false"');
+  });
+
+  it("renders assistant image attachments with a download size control", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline {...buildProps()} timelineEntries={[buildAssistantTimelineEntry()]} />,
+    );
+
+    expect(markup).toContain("Here is the image.");
+    expect(markup).toContain("diagram.png");
+    expect(markup).toContain('href="/attachments/attachment-assistant-1/download"');
+    expect(markup).toContain("1.5 MB");
+    expect(markup).toContain("Download diagram.png");
   });
 
   it("renders a control for hidden earlier messages", async () => {

@@ -171,6 +171,10 @@ function mapMessage(environmentId: EnvironmentId, message: OrchestrationMessage)
       environmentId,
       pathname: attachmentPreviewRoutePath(attachment.id),
     }),
+    downloadUrl: resolveEnvironmentHttpUrl({
+      environmentId,
+      pathname: attachmentDownloadRoutePath(attachment.id),
+    }),
   }));
 
   return {
@@ -1015,6 +1019,10 @@ function toLegacyProvider(providerName: string | null): ProviderDriverKind {
 
 function attachmentPreviewRoutePath(attachmentId: string): string {
   return `/attachments/${encodeURIComponent(attachmentId)}`;
+}
+
+function attachmentDownloadRoutePath(attachmentId: string): string {
+  return `/attachments/${encodeURIComponent(attachmentId)}/download`;
 }
 
 function updateThreadState(

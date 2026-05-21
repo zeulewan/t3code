@@ -39,6 +39,7 @@ export interface ChatImageAttachment {
   mimeType: string;
   sizeBytes: number;
   previewUrl?: string;
+  downloadUrl?: string;
 }
 
 export type ChatAttachment = ChatImageAttachment;
