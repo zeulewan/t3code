@@ -616,6 +616,21 @@ const ClientThreadTurnStartCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+const ClientThreadMessageImportCommand = Schema.Struct({
+  type: Schema.Literal("thread.message.import"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  message: Schema.Struct({
+    messageId: MessageId,
+    role: OrchestrationMessageRole,
+    text: Schema.String,
+    attachments: Schema.optional(Schema.Array(UploadChatAttachment)),
+    turnId: Schema.NullOr(TurnId),
+    createdAt: IsoDateTime,
+  }),
+  createdAt: IsoDateTime,
+});
+
 const ThreadTurnInterruptCommand = Schema.Struct({
   type: Schema.Literal("thread.turn.interrupt"),
   commandId: CommandId,
@@ -690,6 +705,7 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
   ClientThreadTurnStartCommand,
+  ClientThreadMessageImportCommand,
   ThreadTurnInterruptCommand,
   ThreadApprovalRespondCommand,
   ThreadUserInputRespondCommand,
