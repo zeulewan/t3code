@@ -143,6 +143,40 @@ function buildAssistantTimelineEntry() {
   };
 }
 
+function buildAssistantAttachmentTimelineEntry() {
+  return {
+    id: "entry-assistant-attachments",
+    kind: "message" as const,
+    createdAt: MESSAGE_CREATED_AT,
+    message: {
+      id: MessageId.make("message-assistant-attachments"),
+      role: "assistant" as const,
+      text: "Here are the attachments.",
+      attachments: [
+        {
+          type: "video" as const,
+          id: "attachment-video-1",
+          name: "demo.mp4",
+          mimeType: "video/mp4",
+          sizeBytes: 2_621_440,
+          previewUrl: "/attachments/attachment-video-1",
+          downloadUrl: "/attachments/attachment-video-1/download",
+        },
+        {
+          type: "file" as const,
+          id: "attachment-file-1",
+          name: "report.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 524_288,
+          downloadUrl: "/attachments/attachment-file-1/download",
+        },
+      ],
+      createdAt: MESSAGE_CREATED_AT,
+      streaming: false,
+    },
+  };
+}
+
 describe("MessagesTimeline", () => {
   it("renders collapse controls for long user messages", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
@@ -183,6 +217,53 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('href="/attachments/attachment-assistant-1/download"');
     expect(markup).toContain("1.5 MB");
     expect(markup).toContain("Download diagram.png");
+    expect(markup).toContain("Loading preview for diagram.png");
+  });
+
+  it("renders video attachments with controls and a download action", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[buildAssistantAttachmentTimelineEntry()]}
+      />,
+    );
+
+    expect(markup).toContain("Here are the attachments.");
+    expect(markup).toContain("demo.mp4");
+    expect(markup).toContain("<video");
+    expect(markup).toContain("controls");
+    expect(markup).toContain('src="/attachments/attachment-video-1"');
+    expect(markup).toContain('href="/attachments/attachment-video-1/download"');
+    expect(markup).toContain("2.5 MB");
+    expect(markup).toContain("Download demo.mp4");
+  });
+
+  it("renders generic file attachments as download cards", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[buildAssistantAttachmentTimelineEntry()]}
+      />,
+    );
+
+    expect(markup).toContain("report.pdf");
+    expect(markup).toContain("application/pdf");
+    expect(markup).toContain('href="/attachments/attachment-file-1/download"');
+    expect(markup).toContain("512 KB");
+    expect(markup).toContain("Download report.pdf");
+  });
+
+  it("renders a loading state while initial thread messages are backfilling", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline {...buildProps()} timelineEntries={[]} isLoadingInitialMessages />,
+    );
+
+    expect(markup).toContain("Loading messages...");
+    expect(markup).toContain('aria-label="Loading messages"');
+    expect(markup).not.toContain("Send a message to start the conversation.");
   });
 
   it("renders a control for hidden earlier messages", async () => {
@@ -198,6 +279,7 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("Show 240 earlier messages");
     expect(markup).toContain("lucide-chevron-up");
+    expect(markup).toContain("absolute top-2 left-1/2 z-20");
   });
 
   it("renders inline terminal labels with the composer chip UI", async () => {

@@ -52,8 +52,54 @@ export const SidebarThreadPreviewCount = Schema.Int.check(
 export type SidebarThreadPreviewCount = typeof SidebarThreadPreviewCount.Type;
 export const DEFAULT_SIDEBAR_THREAD_PREVIEW_COUNT: SidebarThreadPreviewCount = 6;
 
+export const DEFAULT_CHAT_HEADER_VISIBILITY = {
+  projectBadge: true,
+  branchBadge: false,
+  noGitBadge: true,
+  projectScripts: true,
+  openInPicker: true,
+  gitActions: true,
+  terminalToggle: true,
+  diffToggle: true,
+  branchToolbar: true,
+} as const;
+
+export const ChatHeaderVisibilitySettings = Schema.Struct({
+  projectBadge: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHAT_HEADER_VISIBILITY.projectBadge)),
+  ),
+  branchBadge: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHAT_HEADER_VISIBILITY.branchBadge)),
+  ),
+  noGitBadge: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHAT_HEADER_VISIBILITY.noGitBadge)),
+  ),
+  projectScripts: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHAT_HEADER_VISIBILITY.projectScripts)),
+  ),
+  openInPicker: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHAT_HEADER_VISIBILITY.openInPicker)),
+  ),
+  gitActions: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHAT_HEADER_VISIBILITY.gitActions)),
+  ),
+  terminalToggle: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHAT_HEADER_VISIBILITY.terminalToggle)),
+  ),
+  diffToggle: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHAT_HEADER_VISIBILITY.diffToggle)),
+  ),
+  branchToolbar: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHAT_HEADER_VISIBILITY.branchToolbar)),
+  ),
+});
+export type ChatHeaderVisibilitySettings = typeof ChatHeaderVisibilitySettings.Type;
+
 export const ClientSettingsSchema = Schema.Struct({
   autoOpenPlanSidebar: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  chatHeaderVisibility: ChatHeaderVisibilitySettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHAT_HEADER_VISIBILITY)),
+  ),
   confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   dismissedProviderUpdateNotificationKeys: Schema.Array(TrimmedNonEmptyString).pipe(
@@ -493,6 +539,7 @@ export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 
 export const ClientSettingsPatch = Schema.Struct({
   autoOpenPlanSidebar: Schema.optionalKey(Schema.Boolean),
+  chatHeaderVisibility: Schema.optionalKey(ChatHeaderVisibilitySettings),
   confirmThreadArchive: Schema.optionalKey(Schema.Boolean),
   confirmThreadDelete: Schema.optionalKey(Schema.Boolean),
   changedFilesExpandedByDefault: Schema.optionalKey(Schema.Boolean),

@@ -73,11 +73,18 @@ import {
   type PendingUserInputDraftAnswer,
 } from "../pendingUserInput";
 import {
+  type AppState,
+  selectEnvironmentState,
+  selectSidebarThreadSummaryByRef,
   selectProjectsAcrossEnvironments,
   selectThreadsAcrossEnvironments,
   useStore,
 } from "../store";
-import { createProjectSelectorByRef, createThreadSelectorByRef } from "../storeSelectors";
+import {
+  createProjectSelectorByRef,
+  createThreadDetailLoadedSelectorByRef,
+  createThreadSelectorByRef,
+} from "../storeSelectors";
 import { useUiStateStore } from "../uiStateStore";
 import {
   buildPlanImplementationThreadTitle,
@@ -188,6 +195,8 @@ import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { retainThreadDetailSubscription } from "../environments/runtime/service";
 import { RightPanelSheet } from "./RightPanelSheet";
 import { Button } from "./ui/button";
+import { SidebarInset, SidebarTrigger } from "./ui/sidebar";
+import { Spinner } from "./ui/spinner";
 import {
   buildVersionMismatchDismissalKey,
   dismissVersionMismatch,
@@ -210,6 +219,40 @@ type EnvironmentUnavailableState = {
 };
 
 type ThreadPlanCatalogEntry = Pick<Thread, "id" | "proposedPlans">;
+
+function LoadingThreadState() {
+  return (
+    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
+        <header
+          className={cn(
+            "border-b border-border px-3 sm:px-5",
+            isElectron
+              ? "drag-region flex h-[52px] items-center wco:h-[env(titlebar-area-height)]"
+              : "py-2 sm:py-3",
+          )}
+        >
+          {isElectron ? (
+            <span className="text-xs text-muted-foreground/50 wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)]">
+              Loading thread
+            </span>
+          ) : (
+            <div className="flex items-center gap-2">
+              <SidebarTrigger className="size-7 shrink-0 md:hidden" />
+              <span className="text-sm font-medium text-foreground md:text-muted-foreground/60">
+                Loading thread
+              </span>
+            </div>
+          )}
+        </header>
+        <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-muted-foreground/60">
+          <Spinner className="size-4" aria-label="Loading messages" />
+          <span>Loading messages...</span>
+        </div>
+      </div>
+    </SidebarInset>
+  );
+}
 
 function useThreadPlanCatalog(threadIds: readonly ThreadId[]): ThreadPlanCatalogEntry[] {
   return useStore(
@@ -629,6 +672,25 @@ export default function ChatView(props: ChatViewProps) {
       [routeKind, routeThreadRef],
     ),
   );
+  const environmentBootstrapComplete = useStore(
+    useMemo(
+      () => (state: AppState) => selectEnvironmentState(state, environmentId).bootstrapComplete,
+      [environmentId],
+    ),
+  );
+  const serverSidebarThread = useStore(
+    useMemo(
+      () => (state: AppState) =>
+        selectSidebarThreadSummaryByRef(state, routeKind === "server" ? routeThreadRef : null),
+      [routeKind, routeThreadRef],
+    ),
+  );
+  const serverThreadDetailLoaded = useStore(
+    useMemo(
+      () => createThreadDetailLoadedSelectorByRef(routeKind === "server" ? routeThreadRef : null),
+      [routeKind, routeThreadRef],
+    ),
+  );
   const setStoreThreadError = useStore((store) => store.setError);
   const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
   const activeThreadLastVisitedAt = useUiStateStore((store) =>
@@ -810,6 +872,12 @@ export default function ChatView(props: ChatViewProps) {
   );
   const isServerThread = routeKind === "server" && serverThread !== undefined;
   const activeThread = isServerThread ? serverThread : localDraftThread;
+  const isLoadingServerThreadShell =
+    routeKind === "server" && serverThread === undefined && !environmentBootstrapComplete;
+  const isLoadingInitialThreadMessages =
+    isServerThread &&
+    (!serverThreadDetailLoaded ||
+      (serverThread.messages.length === 0 && serverSidebarThread?.latestUserMessageAt !== null));
   const runtimeMode = composerRuntimeMode ?? activeThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   const interactionMode =
     composerInteractionMode ?? activeThread?.interactionMode ?? DEFAULT_INTERACTION_MODE;
@@ -3623,6 +3691,9 @@ export default function ChatView(props: ChatViewProps) {
 
   // Empty state: no active thread
   if (!activeThread) {
+    if (isLoadingServerThreadShell) {
+      return <LoadingThreadState />;
+    }
     return <NoActiveThreadState />;
   }
 
@@ -3646,8 +3717,11 @@ export default function ChatView(props: ChatViewProps) {
           activeThreadId={activeThread.id}
           {...(routeKind === "draft" && draftId ? { draftId } : {})}
           activeThreadTitle={activeThread.title}
+          activeThreadBranch={activeThreadBranch}
+          activeThreadWorktreePath={activeThread.worktreePath}
           activeProjectName={activeProject?.name}
           isGitRepo={isGitRepo}
+          visibility={settings.chatHeaderVisibility}
           openInCwd={gitCwd}
           activeProjectScripts={activeProject?.scripts}
           preferredScriptId={
@@ -3686,6 +3760,7 @@ export default function ChatView(props: ChatViewProps) {
             <MessagesTimeline
               key={activeThread.id}
               isWorking={isWorking}
+              isLoadingInitialMessages={isLoadingInitialThreadMessages}
               activeTurnInProgress={isWorking || !latestTurnSettled}
               activeTurnId={activeLatestTurn?.turnId ?? null}
               activeTurnStartedAt={activeWorkStartedAt}
@@ -3812,7 +3887,7 @@ export default function ChatView(props: ChatViewProps) {
                 />
               </div>
             </div>
-            {isGitRepo && (
+            {isGitRepo && settings.chatHeaderVisibility.branchToolbar && (
               <BranchToolbar
                 environmentId={activeThread.environmentId}
                 threadId={activeThread.id}

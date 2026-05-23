@@ -17,7 +17,7 @@ import {
 } from "react";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { deriveTimelineEntries, formatElapsed } from "../../session-logic";
-import { type TurnDiffSummary } from "../../types";
+import { type ChatAttachment, type ChatImageAttachment, type TurnDiffSummary } from "../../types";
 import { summarizeTurnDiffStats } from "../../lib/turnDiffTree";
 import ChatMarkdown from "../ChatMarkdown";
 import {
@@ -27,6 +27,7 @@ import {
   CircleAlertIcon,
   DownloadIcon,
   EyeIcon,
+  FileIcon,
   GlobeIcon,
   HammerIcon,
   type LucideIcon,
@@ -37,6 +38,7 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { Button } from "../ui/button";
+import { Spinner } from "../ui/spinner";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesTree } from "./ChangedFilesTree";
@@ -108,6 +110,7 @@ const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "d
 
 interface MessagesTimelineProps {
   isWorking: boolean;
+  isLoadingInitialMessages?: boolean;
   activeTurnInProgress: boolean;
   activeTurnId?: TurnId | null;
   activeTurnStartedAt: string | null;
@@ -139,6 +142,7 @@ interface MessagesTimelineProps {
 
 export const MessagesTimeline = memo(function MessagesTimeline({
   isWorking,
+  isLoadingInitialMessages = false,
   activeTurnInProgress,
   activeTurnId,
   activeTurnStartedAt,
@@ -248,26 +252,48 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }),
     [isRevertingCheckpoint, isWorking],
   );
-  const listHeader = useMemo(() => {
+  const [isShowingEarlierMessages, setIsShowingEarlierMessages] = useState(false);
+  useEffect(() => {
+    if (hiddenEarlierMessageCount <= 0) {
+      setIsShowingEarlierMessages(false);
+    }
+  }, [hiddenEarlierMessageCount]);
+  const handleShowEarlierMessages = useCallback(() => {
+    setIsShowingEarlierMessages(true);
+    onShowEarlierMessages?.();
+  }, [onShowEarlierMessages]);
+  const earlierMessagesControl = useMemo(() => {
     if (hiddenEarlierMessageCount <= 0 || !onShowEarlierMessages) {
-      return TIMELINE_LIST_HEADER;
+      return null;
     }
 
     return (
-      <div className="mx-auto flex w-full max-w-3xl justify-center py-3">
+      <div className="pointer-events-none absolute top-2 left-1/2 z-20 flex -translate-x-1/2 justify-center">
         <Button
           type="button"
           size="sm"
           variant="ghost"
-          className="h-8 gap-1.5 rounded-full border border-border/60 bg-card/80 px-3 text-xs text-muted-foreground shadow-sm hover:text-foreground"
-          onClick={onShowEarlierMessages}
+          className="pointer-events-auto h-8 gap-1.5 rounded-full border border-border/60 bg-card/90 px-3 text-xs text-muted-foreground shadow-sm backdrop-blur hover:text-foreground"
+          disabled={isShowingEarlierMessages}
+          onClick={handleShowEarlierMessages}
         >
-          <ChevronUpIcon className="size-3.5" />
-          Show {hiddenEarlierMessageCount.toLocaleString()} earlier messages
+          {isShowingEarlierMessages ? (
+            <Spinner className="size-3.5" aria-label="Loading earlier messages" />
+          ) : (
+            <ChevronUpIcon className="size-3.5" />
+          )}
+          {isShowingEarlierMessages
+            ? "Loading earlier messages..."
+            : `Show ${hiddenEarlierMessageCount.toLocaleString()} earlier messages`}
         </Button>
       </div>
     );
-  }, [hiddenEarlierMessageCount, onShowEarlierMessages]);
+  }, [
+    handleShowEarlierMessages,
+    hiddenEarlierMessageCount,
+    isShowingEarlierMessages,
+    onShowEarlierMessages,
+  ]);
 
   // Stable renderItem — no closure deps. Row components read shared state
   // from TimelineRowCtx, which propagates through LegendList's memo.
@@ -279,6 +305,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ),
     [],
   );
+
+  if (rows.length === 0 && isLoadingInitialMessages) {
+    return (
+      <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground/60">
+        <Spinner className="size-4" aria-label="Loading messages" />
+        <span>Loading messages...</span>
+      </div>
+    );
+  }
 
   if (rows.length === 0 && !isWorking) {
     return (
@@ -293,21 +328,27 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   return (
     <TimelineRowCtx value={sharedState}>
       <TimelineRowActivityCtx value={activityState}>
-        <LegendList<MessagesTimelineRow>
-          ref={listRef}
-          data={rows}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
-          estimatedItemSize={90}
-          initialScrollAtEnd
-          maintainScrollAtEnd
-          maintainScrollAtEndThreshold={0.1}
-          maintainVisibleContentPosition
-          onScroll={handleScroll}
-          className="h-full overflow-x-hidden overscroll-y-contain px-3 sm:px-5"
-          ListHeaderComponent={listHeader}
-          ListFooterComponent={TIMELINE_LIST_FOOTER}
-        />
+        <div className="relative h-full min-h-0">
+          {earlierMessagesControl}
+          <LegendList<MessagesTimelineRow>
+            ref={listRef}
+            data={rows}
+            keyExtractor={keyExtractor}
+            renderItem={renderItem}
+            estimatedItemSize={90}
+            initialScrollAtEnd
+            maintainScrollAtEnd
+            maintainScrollAtEndThreshold={0.1}
+            maintainVisibleContentPosition
+            onScroll={handleScroll}
+            className={cn(
+              "h-full overflow-x-hidden overscroll-y-contain px-3 sm:px-5",
+              earlierMessagesControl ? "pt-12" : null,
+            )}
+            ListHeaderComponent={TIMELINE_LIST_HEADER}
+            ListFooterComponent={TIMELINE_LIST_FOOTER}
+          />
+        </div>
       </TimelineRowActivityCtx>
     </TimelineRowCtx>
   );
@@ -321,8 +362,6 @@ function keyExtractor(item: MessagesTimelineRow) {
 // TimelineRowContent — the actual row component
 // ---------------------------------------------------------------------------
 
-type TimelineEntry = ReturnType<typeof deriveTimelineEntries>[number];
-type TimelineMessage = Extract<TimelineEntry, { kind: "message" }>["message"];
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 type TimelineRow = MessagesTimelineRow;
 
@@ -364,13 +403,35 @@ function formatAttachmentSize(sizeBytes: number): string {
   return `${value.toFixed(fractionDigits)} ${units[unitIndex]}`;
 }
 
+function splitAttachments(attachments: ReadonlyArray<ChatAttachment> | undefined): {
+  images: ChatImageAttachment[];
+  videos: Extract<ChatAttachment, { type: "video" }>[];
+  files: Extract<ChatAttachment, { type: "file" }>[];
+} {
+  const images: ChatImageAttachment[] = [];
+  const videos: Extract<ChatAttachment, { type: "video" }>[] = [];
+  const files: Extract<ChatAttachment, { type: "file" }>[] = [];
+
+  for (const attachment of attachments ?? []) {
+    if (attachment.type === "image") {
+      images.push(attachment);
+    } else if (attachment.type === "video") {
+      videos.push(attachment);
+    } else {
+      files.push(attachment);
+    }
+  }
+
+  return { images, videos, files };
+}
+
 function ImageAttachmentGrid({
   attachments,
   className,
   maxImageHeightClassName,
   onImageExpand,
 }: {
-  attachments: ReadonlyArray<NonNullable<TimelineMessage["attachments"]>[number]>;
+  attachments: ReadonlyArray<ChatImageAttachment>;
   className?: string;
   maxImageHeightClassName: string;
   onImageExpand: (preview: ExpandedImagePreview) => void;
@@ -400,11 +461,9 @@ function ImageAttachmentGrid({
                   onImageExpand(preview);
                 }}
               >
-                <img
-                  src={image.previewUrl}
-                  alt={image.name}
-                  className={cn("block h-auto w-full object-cover", maxImageHeightClassName)}
-                  loading="lazy"
+                <ImageAttachmentPreview
+                  image={image}
+                  maxImageHeightClassName={maxImageHeightClassName}
                 />
               </button>
             ) : (
@@ -436,9 +495,202 @@ function ImageAttachmentGrid({
   );
 }
 
+function ImageAttachmentPreview({
+  image,
+  maxImageHeightClassName,
+}: {
+  image: ChatImageAttachment;
+  maxImageHeightClassName: string;
+}) {
+  const [loadState, setLoadState] = useState<"loading" | "loaded" | "error">("loading");
+
+  useEffect(() => {
+    setLoadState("loading");
+  }, [image.previewUrl]);
+
+  return (
+    <span className="relative block min-h-[72px]">
+      <img
+        src={image.previewUrl}
+        alt={image.name}
+        className={cn(
+          "block h-auto w-full object-cover transition-opacity duration-150",
+          maxImageHeightClassName,
+          loadState === "loaded" ? "opacity-100" : "opacity-0",
+        )}
+        loading="lazy"
+        onLoad={() => setLoadState("loaded")}
+        onError={() => setLoadState("error")}
+      />
+      {loadState !== "loaded" ? (
+        <span className="absolute inset-0 flex min-h-[72px] items-center justify-center bg-muted/40 text-muted-foreground">
+          {loadState === "error" ? (
+            <span className="px-2 text-center text-[11px] text-muted-foreground/70">
+              {image.name}
+            </span>
+          ) : (
+            <Spinner className="size-4" aria-label={`Loading preview for ${image.name}`} />
+          )}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function VideoAttachmentGrid({
+  attachments,
+  className,
+}: {
+  attachments: ReadonlyArray<Extract<ChatAttachment, { type: "video" }>>;
+  className?: string;
+}) {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={cn("grid max-w-[520px] gap-2", className)}>
+      {attachments.map((video) => {
+        const sizeLabel = formatAttachmentSize(video.sizeBytes);
+        const downloadUrl = video.downloadUrl ?? video.previewUrl;
+
+        return (
+          <div
+            key={video.id}
+            className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+          >
+            {video.previewUrl ? (
+              <video
+                className="block max-h-[320px] w-full bg-black object-contain"
+                controls
+                preload="metadata"
+                src={video.previewUrl}
+              >
+                <track kind="captions" />
+              </video>
+            ) : (
+              <div className="flex min-h-[96px] items-center justify-center px-3 py-4 text-center text-xs text-muted-foreground/70">
+                {video.name}
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-3 border-t border-border/70 px-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium text-foreground">{video.name}</p>
+                <p className="text-[11px] text-muted-foreground/70">
+                  {video.mimeType} · {sizeLabel}
+                </p>
+              </div>
+              {downloadUrl ? (
+                <a
+                  href={downloadUrl}
+                  download={video.name}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2 py-1 text-[10px] font-medium text-foreground transition-colors hover:bg-accent"
+                  aria-label={`Download ${video.name} (${sizeLabel})`}
+                  title={`Download ${video.name} (${sizeLabel})`}
+                >
+                  <DownloadIcon className="size-3" />
+                  <span>Download</span>
+                </a>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FileAttachmentList({
+  attachments,
+  className,
+}: {
+  attachments: ReadonlyArray<Extract<ChatAttachment, { type: "file" }>>;
+  className?: string;
+}) {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={cn("grid max-w-[420px] gap-2", className)}>
+      {attachments.map((file) => {
+        const sizeLabel = formatAttachmentSize(file.sizeBytes);
+        const content = (
+          <>
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+              <FileIcon className="size-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs font-medium text-foreground">
+                {file.name}
+              </span>
+              <span className="block truncate text-[11px] text-muted-foreground/70">
+                {file.mimeType} · {sizeLabel}
+              </span>
+            </span>
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2 py-1 text-[10px] font-medium text-foreground">
+              <DownloadIcon className="size-3" />
+              <span>Download</span>
+            </span>
+          </>
+        );
+
+        return file.downloadUrl ? (
+          <a
+            key={file.id}
+            href={file.downloadUrl}
+            download={file.name}
+            className="flex items-center gap-3 rounded-lg border border-border/80 bg-background/70 px-3 py-2 transition-colors hover:bg-accent/60"
+            aria-label={`Download ${file.name} (${sizeLabel})`}
+            title={`Download ${file.name} (${sizeLabel})`}
+          >
+            {content}
+          </a>
+        ) : (
+          <div
+            key={file.id}
+            className="flex items-center gap-3 rounded-lg border border-border/80 bg-background/70 px-3 py-2"
+          >
+            {content}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MessageAttachmentBlock({
+  attachments,
+  className,
+  maxImageHeightClassName,
+  onImageExpand,
+}: {
+  attachments: ReadonlyArray<ChatAttachment> | undefined;
+  className?: string;
+  maxImageHeightClassName: string;
+  onImageExpand: (preview: ExpandedImagePreview) => void;
+}) {
+  const { images, videos, files } = splitAttachments(attachments);
+
+  if (images.length === 0 && videos.length === 0 && files.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={cn("space-y-2", className)}>
+      <ImageAttachmentGrid
+        attachments={images}
+        maxImageHeightClassName={maxImageHeightClassName}
+        onImageExpand={onImageExpand}
+      />
+      <VideoAttachmentGrid attachments={videos} />
+      <FileAttachmentList attachments={files} />
+    </div>
+  );
+}
+
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
-  const userImages = row.message.attachments ?? [];
   const displayedUserMessage = deriveDisplayedUserMessageState(row.message.text);
   const terminalContexts = displayedUserMessage.contexts;
   const canRevertAgentWork = typeof row.revertTurnCount === "number";
@@ -446,8 +698,8 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   return (
     <div className="flex justify-end">
       <div className="group relative max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
-        <ImageAttachmentGrid
-          attachments={userImages}
+        <MessageAttachmentBlock
+          attachments={row.message.attachments}
           className="mb-2"
           maxImageHeightClassName="max-h-[220px]"
           onImageExpand={ctx.onImageExpand}
@@ -496,7 +748,6 @@ function RevertUserMessageButton({ messageId }: { messageId: MessageId }) {
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
-  const assistantImages = row.message.attachments ?? [];
 
   return (
     <>
@@ -510,8 +761,8 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           isStreaming={Boolean(row.message.streaming)}
           skills={ctx.skills}
         />
-        <ImageAttachmentGrid
-          attachments={assistantImages}
+        <MessageAttachmentBlock
+          attachments={row.message.attachments}
           className="mt-3"
           maxImageHeightClassName="max-h-[280px]"
           onImageExpand={ctx.onImageExpand}
