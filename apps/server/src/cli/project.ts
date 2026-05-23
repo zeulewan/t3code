@@ -179,7 +179,14 @@ const findActiveProjectTarget = Effect.fn("findActiveProjectTarget")(function* (
       ? undefined
       : activeProjects.find((project) => project.workspaceRoot === normalizedWorkspaceRoot);
 
-  const resolved = exactWorkspaceMatch;
+  const exactTitleMatches = activeProjects.filter((project) => project.title === trimmedIdentifier);
+  if (exactTitleMatches.length > 1) {
+    return yield* new ProjectCommandError({
+      message: `Multiple active projects are named '${trimmedIdentifier}'. Use a project id or workspace root.`,
+    });
+  }
+
+  const resolved = exactWorkspaceMatch ?? exactTitleMatches[0];
   if (!resolved) {
     return yield* new ProjectCommandError({
       message: `No active project found for '${trimmedIdentifier}'.`,
@@ -416,7 +423,7 @@ const projectRemoveCommand = Command.make("remove", {
 const projectRenameCommand = Command.make("rename", {
   ...projectLocationFlags,
   project: Argument.string("project").pipe(
-    Argument.withDescription("Project id or workspace root to rename."),
+    Argument.withDescription("Project id, title, or workspace root to rename."),
   ),
   title: Argument.string("title").pipe(Argument.withDescription("New project title.")),
 }).pipe(
@@ -454,7 +461,69 @@ const projectRenameCommand = Command.make("rename", {
   ),
 );
 
+const projectRelocateCommand = Command.make("relocate", {
+  ...projectLocationFlags,
+  project: Argument.string("project").pipe(
+    Argument.withDescription("Project id, title, or workspace root to relocate."),
+  ),
+  workspaceRoot: Argument.string("path").pipe(
+    Argument.withDescription("Existing workspace root to bind the project to."),
+  ),
+}).pipe(
+  Command.withDescription("Update a project's workspace root."),
+  Command.withHandler((flags) =>
+    runProjectMutation(
+      flags,
+      Effect.fn("projectRelocateMutation")(function* ({
+        snapshot,
+        dispatch,
+      }: {
+        readonly snapshot: OrchestrationReadModel;
+        readonly dispatch: (
+          command: ProjectCliDispatchCommand,
+        ) => Effect.Effect<void, Error, FileSystem.FileSystem | HttpClient.HttpClient | Path.Path>;
+      }) {
+        const project = yield* findActiveProjectTarget({
+          snapshot,
+          identifier: flags.project,
+        });
+        const nextWorkspaceRoot = yield* normalizeWorkspaceRootForProjectCommand(
+          flags.workspaceRoot,
+        );
+        if (nextWorkspaceRoot === project.workspaceRoot) {
+          return `Project ${project.id} is already rooted at ${nextWorkspaceRoot}.`;
+        }
+
+        const existingProject = snapshot.projects.find(
+          (candidate) =>
+            candidate.deletedAt === null &&
+            candidate.id !== project.id &&
+            candidate.workspaceRoot === nextWorkspaceRoot,
+        );
+        if (existingProject) {
+          return yield* new ProjectCommandError({
+            message: `An active project already exists for '${nextWorkspaceRoot}' (${existingProject.title}).`,
+          });
+        }
+
+        yield* dispatch({
+          type: "project.meta.update",
+          commandId: CommandId.make(crypto.randomUUID()),
+          projectId: project.id,
+          workspaceRoot: nextWorkspaceRoot,
+        });
+        return `Relocated project ${project.id} (${project.title}) from ${project.workspaceRoot} to ${nextWorkspaceRoot}.`;
+      }),
+    ),
+  ),
+);
+
 export const projectCommand = Command.make("project").pipe(
   Command.withDescription("Manage projects."),
-  Command.withSubcommands([projectAddCommand, projectRemoveCommand, projectRenameCommand]),
+  Command.withSubcommands([
+    projectAddCommand,
+    projectRemoveCommand,
+    projectRenameCommand,
+    projectRelocateCommand,
+  ]),
 );
