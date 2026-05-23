@@ -71,6 +71,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   const pointerFocusProps = preserveComposerFocusOnPointerDown
     ? { onPointerDown: preventPointerFocus }
     : undefined;
+  const showSubmitSpinner = isConnecting || isSendBusy;
 
   if (pendingAction) {
     return (
@@ -112,6 +113,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             (pendingAction.isLastQuestion ? !pendingAction.isComplete : !pendingAction.canAdvance)
           }
         >
+          {pendingAction.isResponding ? <Spinner className="size-3.5" /> : null}
           {formatPendingPrimaryActionLabel({
             compact,
             isLastQuestion: pendingAction.isLastQuestion,
@@ -149,7 +151,8 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           {...pointerFocusProps}
           disabled={isSendBusy || isConnecting || isEnvironmentUnavailable}
         >
-          {isConnecting || isSendBusy ? "Sending..." : "Refine"}
+          {showSubmitSpinner ? <Spinner className="size-3.5" /> : null}
+          {showSubmitSpinner ? "Sending..." : "Refine"}
         </Button>
       );
     }
@@ -163,7 +166,8 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           {...pointerFocusProps}
           disabled={isSendBusy || isConnecting || isEnvironmentUnavailable}
         >
-          {isConnecting || isSendBusy ? "Sending..." : "Implement"}
+          {showSubmitSpinner ? <Spinner className="size-3.5" /> : null}
+          {showSubmitSpinner ? "Sending..." : "Implement"}
         </Button>
         <Menu>
           <MenuTrigger
@@ -211,8 +215,8 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                 : "Send message"
       }
     >
-      {isConnecting || isSendBusy ? (
-        <Spinner className="size-3.5" aria-hidden="true" />
+      {showSubmitSpinner ? (
+        <Spinner className="size-3.5" aria-label={isConnecting ? "Connecting" : "Sending"} />
       ) : (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
           <path
