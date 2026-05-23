@@ -5,6 +5,7 @@ import { ProviderInstanceId } from "./providerInstance.ts";
 import {
   ClientSettingsPatch,
   ClientSettingsSchema,
+  DEFAULT_CHAT_HEADER_VISIBILITY,
   DEFAULT_CLIENT_SETTINGS,
   DEFAULT_SERVER_SETTINGS,
   ServerSettings,
@@ -26,6 +27,38 @@ describe("ClientSettings changed files defaults", () => {
   it("accepts changed file expansion patches", () => {
     const patch = decodeClientSettingsPatch({ changedFilesExpandedByDefault: true });
     expect(patch.changedFilesExpandedByDefault).toBe(true);
+  });
+});
+
+describe("ClientSettings chat header visibility", () => {
+  it("defaults current header controls to visible and the restored branch badge to hidden", () => {
+    expect(DEFAULT_CLIENT_SETTINGS.chatHeaderVisibility).toEqual(DEFAULT_CHAT_HEADER_VISIBILITY);
+    expect(decodeClientSettings({}).chatHeaderVisibility).toEqual(DEFAULT_CHAT_HEADER_VISIBILITY);
+  });
+
+  it("fills missing nested header visibility fields while decoding", () => {
+    expect(
+      decodeClientSettings({
+        chatHeaderVisibility: {
+          projectBadge: false,
+          branchBadge: true,
+        },
+      }).chatHeaderVisibility,
+    ).toEqual({
+      ...DEFAULT_CHAT_HEADER_VISIBILITY,
+      projectBadge: false,
+      branchBadge: true,
+    });
+  });
+
+  it("accepts chat header visibility patches", () => {
+    const patch = decodeClientSettingsPatch({
+      chatHeaderVisibility: {
+        ...DEFAULT_CHAT_HEADER_VISIBILITY,
+        diffToggle: false,
+      },
+    });
+    expect(patch.chatHeaderVisibility?.diffToggle).toBe(false);
   });
 });
 

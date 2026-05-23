@@ -75,6 +75,7 @@ export interface EnvironmentState {
   // (writeThreadState / syncServerThreadDetail).  The shell stream never
   // touches these.
   // ---------------------------------------------------------------------------
+  threadDetailLoadedByThreadId: Record<ThreadId, boolean>;
   messageIdsByThreadId: Record<ThreadId, MessageId[]>;
   messageByThreadId: Record<ThreadId, Record<MessageId, ChatMessage>>;
   activityIdsByThreadId: Record<ThreadId, string[]>;
@@ -109,6 +110,7 @@ const initialEnvironmentState: EnvironmentState = {
   threadShellById: {},
   threadSessionById: {},
   threadTurnStateById: {},
+  threadDetailLoadedByThreadId: {},
   messageIdsByThreadId: {},
   messageByThreadId: {},
   activityIdsByThreadId: {},
@@ -167,21 +169,31 @@ function mapSession(session: OrchestrationSession): ThreadSession {
 }
 
 function mapMessage(environmentId: EnvironmentId, message: OrchestrationMessage): ChatMessage {
-  const attachments = message.attachments?.map((attachment) => ({
-    type: "image" as const,
-    id: attachment.id,
-    name: attachment.name,
-    mimeType: attachment.mimeType,
-    sizeBytes: attachment.sizeBytes,
-    previewUrl: resolveEnvironmentHttpUrl({
+  const attachments = message.attachments?.map((attachment) => {
+    const attachmentUrl = resolveEnvironmentHttpUrl({
       environmentId,
       pathname: attachmentPreviewRoutePath(attachment.id),
-    }),
-    downloadUrl: resolveEnvironmentHttpUrl({
+    });
+    const downloadUrl = resolveEnvironmentHttpUrl({
       environmentId,
       pathname: attachmentDownloadRoutePath(attachment.id),
-    }),
-  }));
+    });
+    const baseAttachment = {
+      type: attachment.type,
+      id: attachment.id,
+      name: attachment.name,
+      mimeType: attachment.mimeType,
+      sizeBytes: attachment.sizeBytes,
+      downloadUrl,
+    };
+
+    return attachment.type === "file"
+      ? baseAttachment
+      : {
+          ...baseAttachment,
+          previewUrl: attachmentUrl,
+        };
+  });
 
   return {
     id: message.id,
@@ -584,6 +596,7 @@ function writeThreadState(
   state: EnvironmentState,
   nextThread: Thread,
   previousThread?: Thread,
+  options?: { readonly detailLoaded?: boolean },
 ): EnvironmentState {
   const nextShell = toThreadShell(nextThread);
   const nextTurnState = toThreadTurnState(nextThread);
@@ -596,6 +609,19 @@ function writeThreadState(
     nextThread.projectId,
     previousThread?.projectId,
   );
+
+  if (
+    options?.detailLoaded === true &&
+    nextState.threadDetailLoadedByThreadId[nextThread.id] !== true
+  ) {
+    nextState = {
+      ...nextState,
+      threadDetailLoadedByThreadId: {
+        ...nextState.threadDetailLoadedByThreadId,
+        [nextThread.id]: true,
+      },
+    };
+  }
 
   if (!threadShellsEqual(previousShell, nextShell)) {
     nextState = {
@@ -805,6 +831,8 @@ function removeThreadState(state: EnvironmentState, threadId: ThreadId): Environ
   const { [threadId]: _removedShell, ...threadShellById } = state.threadShellById;
   const { [threadId]: _removedSession, ...threadSessionById } = state.threadSessionById;
   const { [threadId]: _removedTurnState, ...threadTurnStateById } = state.threadTurnStateById;
+  const { [threadId]: _removedDetailLoaded, ...threadDetailLoadedByThreadId } =
+    state.threadDetailLoadedByThreadId;
   const { [threadId]: _removedMessageIds, ...messageIdsByThreadId } = state.messageIdsByThreadId;
   const { [threadId]: _removedMessages, ...messageByThreadId } = state.messageByThreadId;
   const { [threadId]: _removedActivityIds, ...activityIdsByThreadId } = state.activityIdsByThreadId;
@@ -825,6 +853,7 @@ function removeThreadState(state: EnvironmentState, threadId: ThreadId): Environ
     threadShellById,
     threadSessionById,
     threadTurnStateById,
+    threadDetailLoadedByThreadId,
     messageIdsByThreadId,
     messageByThreadId,
     activityIdsByThreadId,
@@ -1105,6 +1134,10 @@ function syncEnvironmentShellSnapshot(
     threadSessionById: {},
     threadTurnStateById: {},
     sidebarThreadSummaryById: {},
+    threadDetailLoadedByThreadId: retainThreadScopedRecord(
+      state.threadDetailLoadedByThreadId,
+      nextThreadIds,
+    ),
     messageIdsByThreadId: retainThreadScopedRecord(state.messageIdsByThreadId, nextThreadIds),
     messageByThreadId: retainThreadScopedRecord(state.messageByThreadId, nextThreadIds),
     activityIdsByThreadId: retainThreadScopedRecord(state.activityIdsByThreadId, nextThreadIds),
@@ -1161,7 +1194,9 @@ export function syncServerThreadDetail(
   return commitEnvironmentState(
     state,
     environmentId,
-    writeThreadState(environmentState, mapThread(thread, environmentId), previousThread),
+    writeThreadState(environmentState, mapThread(thread, environmentId), previousThread, {
+      detailLoaded: true,
+    }),
   );
 }
 

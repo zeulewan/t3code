@@ -14,7 +14,11 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime";
-import { DEFAULT_UNIFIED_SETTINGS, type UiScale } from "@t3tools/contracts/settings";
+import {
+  DEFAULT_UNIFIED_SETTINGS,
+  type ChatHeaderVisibilitySettings,
+  type UiScale,
+} from "@t3tools/contracts/settings";
 import { createModelSelection } from "@t3tools/shared/model";
 import * as Arr from "effect/Array";
 import * as Duration from "effect/Duration";
@@ -128,6 +132,78 @@ function normalizeUiScaleOption(value: UiScale): UiScaleOption {
   if (value === "xx-large") return "small";
   return value;
 }
+
+const CHAT_HEADER_VISIBILITY_OPTIONS = [
+  {
+    key: "projectBadge",
+    title: "Project badge",
+    resetLabel: "project badge",
+    ariaLabel: "Show project badge in chat top bar",
+    description: "Show the active project name next to the thread title.",
+  },
+  {
+    key: "branchBadge",
+    title: "Branch badge",
+    resetLabel: "branch badge",
+    ariaLabel: "Show branch badge in chat top bar",
+    description: "Restore the compact branch and worktree badge in the top bar.",
+  },
+  {
+    key: "noGitBadge",
+    title: "No Git badge",
+    resetLabel: "No Git badge",
+    ariaLabel: "Show No Git badge in chat top bar",
+    description: "Show a small badge when the active project is not a Git repository.",
+  },
+  {
+    key: "projectScripts",
+    title: "Project scripts",
+    resetLabel: "project scripts",
+    ariaLabel: "Show project scripts in chat top bar",
+    description: "Show the project-scoped scripts and actions menu.",
+  },
+  {
+    key: "openInPicker",
+    title: "Open in editor",
+    resetLabel: "Open in editor",
+    ariaLabel: "Show Open in editor picker in chat top bar",
+    description: "Show the editor picker for opening the active project.",
+  },
+  {
+    key: "gitActions",
+    title: "Git actions",
+    resetLabel: "Git actions",
+    ariaLabel: "Show Git actions in chat top bar",
+    description: "Show the Git branch, publish, and pull-request actions menu.",
+  },
+  {
+    key: "terminalToggle",
+    title: "Terminal toggle",
+    resetLabel: "terminal toggle",
+    ariaLabel: "Show terminal toggle in chat top bar",
+    description: "Show the button that opens and closes the terminal drawer.",
+  },
+  {
+    key: "diffToggle",
+    title: "Diff toggle",
+    resetLabel: "diff toggle",
+    ariaLabel: "Show diff toggle in chat top bar",
+    description: "Show the button that opens and closes the diff panel.",
+  },
+  {
+    key: "branchToolbar",
+    title: "Branch/worktree toolbar",
+    resetLabel: "branch/worktree toolbar",
+    ariaLabel: "Show branch and worktree toolbar below chat",
+    description: "Show the checkout, branch, and local/worktree controls below the chat.",
+  },
+] as const satisfies ReadonlyArray<{
+  key: keyof ChatHeaderVisibilitySettings;
+  title: string;
+  resetLabel: string;
+  ariaLabel: string;
+  description: string;
+}>;
 
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
 
@@ -416,6 +492,10 @@ export function useSettingsRestore(onRestored?: () => void) {
     settings.textGenerationModelSelection ?? null,
     DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection ?? null,
   );
+  const isChatHeaderVisibilityDirty = !Equal.equals(
+    settings.chatHeaderVisibility,
+    DEFAULT_UNIFIED_SETTINGS.chatHeaderVisibility,
+  );
 
   const changedSettingLabels = useMemo(
     () => [
@@ -455,9 +535,11 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.confirmThreadDelete !== DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete
         ? ["Delete confirmation"]
         : []),
+      ...(isChatHeaderVisibilityDirty ? ["Chat top bar"] : []),
       ...(isGitWritingModelDirty ? ["Git writing model"] : []),
     ],
     [
+      isChatHeaderVisibilityDirty,
       isGitWritingModelDirty,
       settings.autoOpenPlanSidebar,
       settings.confirmThreadArchive,
@@ -499,6 +581,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
+      chatHeaderVisibility: DEFAULT_UNIFIED_SETTINGS.chatHeaderVisibility,
       textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
     });
     onRestored?.();
@@ -545,6 +628,17 @@ export function GeneralSettingsPanel() {
   const isGitWritingModelDirty = !Equal.equals(
     settings.textGenerationModelSelection ?? null,
     DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection ?? null,
+  );
+  const updateChatHeaderVisibility = useCallback(
+    (key: keyof ChatHeaderVisibilitySettings, visible: boolean) => {
+      updateSettings({
+        chatHeaderVisibility: {
+          ...settings.chatHeaderVisibility,
+          [key]: visible,
+        },
+      });
+    },
+    [settings.chatHeaderVisibility, updateSettings],
   );
 
   return (
@@ -1011,6 +1105,39 @@ export function GeneralSettingsPanel() {
             </div>
           }
         />
+      </SettingsSection>
+
+      <SettingsSection title="Chat top bar">
+        {CHAT_HEADER_VISIBILITY_OPTIONS.map((option) => (
+          <SettingsRow
+            key={option.key}
+            title={option.title}
+            description={option.description}
+            resetAction={
+              settings.chatHeaderVisibility[option.key] !==
+              DEFAULT_UNIFIED_SETTINGS.chatHeaderVisibility[option.key] ? (
+                <SettingResetButton
+                  label={option.resetLabel}
+                  onClick={() =>
+                    updateChatHeaderVisibility(
+                      option.key,
+                      DEFAULT_UNIFIED_SETTINGS.chatHeaderVisibility[option.key],
+                    )
+                  }
+                />
+              ) : null
+            }
+            control={
+              <Switch
+                checked={settings.chatHeaderVisibility[option.key]}
+                onCheckedChange={(checked) =>
+                  updateChatHeaderVisibility(option.key, Boolean(checked))
+                }
+                aria-label={option.ariaLabel}
+              />
+            }
+          />
+        ))}
       </SettingsSection>
 
       <SettingsSection title="About">

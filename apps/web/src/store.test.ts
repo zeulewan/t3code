@@ -26,6 +26,7 @@ import {
   type AppState,
   type EnvironmentState,
 } from "./store";
+import { createThreadDetailLoadedSelectorByRef } from "./storeSelectors";
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type Thread } from "./types";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
@@ -141,6 +142,9 @@ function makeState(thread: Thread): AppState {
           : {}),
       },
     },
+    threadDetailLoadedByThreadId: {
+      [thread.id]: true,
+    },
     messageIdsByThreadId: {
       [thread.id]: thread.messages.map((message) => message.id),
     },
@@ -190,6 +194,7 @@ function makeEmptyState(overrides: Partial<AppState & EnvironmentState> = {}): A
     threadShellById: {},
     threadSessionById: {},
     threadTurnStateById: {},
+    threadDetailLoadedByThreadId: {},
     messageIdsByThreadId: {},
     messageByThreadId: {},
     activityIdsByThreadId: {},
@@ -219,6 +224,38 @@ function projectsOf(state: AppState) {
 function threadsOf(state: AppState) {
   return selectThreadsAcrossEnvironments(state);
 }
+
+it("does not treat live message events as a completed detail backfill", () => {
+  const thread = makeThread();
+  const threadRef = scopeThreadRef(thread.environmentId, thread.id);
+  const state = withActiveEnvironmentState(localEnvironmentStateOf(makeState(thread)), {
+    threadDetailLoadedByThreadId: {},
+    messageIdsByThreadId: {
+      [thread.id]: [],
+    },
+    messageByThreadId: {
+      [thread.id]: {},
+    },
+  });
+
+  const next = applyOrchestrationEvent(
+    state,
+    makeEvent("thread.message-sent", {
+      threadId: thread.id,
+      messageId: MessageId.make("live-message"),
+      role: "user",
+      text: "live event before snapshot",
+      turnId: null,
+      streaming: false,
+      createdAt: "2026-02-27T00:00:01.000Z",
+      updatedAt: "2026-02-27T00:00:01.000Z",
+    }),
+    localEnvironmentId,
+  );
+
+  expect(selectThreadByRef(next, threadRef)?.messages).toHaveLength(1);
+  expect(createThreadDetailLoadedSelectorByRef(threadRef)(next)).toBe(false);
+});
 
 function makeEvent<T extends OrchestrationEvent["type"]>(
   type: T,
@@ -652,6 +689,10 @@ describe("incremental orchestration updates", () => {
         [thread2.id]: {
           latestTurn: thread2.latestTurn,
         },
+      },
+      threadDetailLoadedByThreadId: {
+        ...baseEnvironmentState.threadDetailLoadedByThreadId,
+        [thread2.id]: true,
       },
       messageIdsByThreadId: {
         ...baseEnvironmentState.messageIdsByThreadId,
