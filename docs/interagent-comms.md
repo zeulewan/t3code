@@ -528,6 +528,12 @@ t3 comms send bob joe "Can you review this?" --type defer
 t3 comms inbox joe
 ```
 
+Inside an agent runtime, `comms send` can autodetect the sender from `T3_THREAD_ID`, with `T3_COMMS_HANDLE` as a fallback:
+
+```sh
+t3 comms send joe "Can you review this?" --type defer
+```
+
 Spawn a live Codex-backed agent with low reasoning:
 
 ```sh
@@ -541,6 +547,12 @@ t3 comms register joe --kind agent --thread <thread-id>
 ```
 
 Send an interruptive direct message:
+
+```sh
+t3 comms send joe "Please look at issue #20" --type direct
+```
+
+Outside an agent runtime, keep using the explicit sender form:
 
 ```sh
 t3 comms send bob joe "Please look at issue #20" --type direct
