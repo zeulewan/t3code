@@ -8,7 +8,9 @@ import {
   CommsActor,
   CommsDelivery,
   CommsError,
+  CommsConversationSummary,
   CommsListActorsInput,
+  CommsListConversationsInput,
   CommsListConversationMessagesInput,
   CommsListInboxInput,
   CommsMessageWithDelivery,
@@ -130,6 +132,7 @@ export const WS_METHODS = {
   commsListActors: "comms.listActors",
   commsSendMessage: "comms.sendMessage",
   commsListInbox: "comms.listInbox",
+  commsListConversations: "comms.listConversations",
   commsListConversationMessages: "comms.listConversationMessages",
   commsSetDeliveryStatus: "comms.setDeliveryStatus",
 
@@ -231,6 +234,12 @@ export const WsCommsSendMessageRpc = Rpc.make(WS_METHODS.commsSendMessage, {
 export const WsCommsListInboxRpc = Rpc.make(WS_METHODS.commsListInbox, {
   payload: CommsListInboxInput,
   success: Schema.Array(CommsMessageWithDelivery),
+  error: CommsError,
+});
+
+export const WsCommsListConversationsRpc = Rpc.make(WS_METHODS.commsListConversations, {
+  payload: CommsListConversationsInput,
+  success: Schema.Array(CommsConversationSummary),
   error: CommsError,
 });
 
@@ -567,6 +576,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsCommsListActorsRpc,
   WsCommsSendMessageRpc,
   WsCommsListInboxRpc,
+  WsCommsListConversationsRpc,
   WsCommsListConversationMessagesRpc,
   WsCommsSetDeliveryStatusRpc,
   WsCodexSessionsListRpc,

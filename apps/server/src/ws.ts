@@ -891,6 +891,16 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               .pipe(Effect.mapError((cause) => toCommsError(cause, "Failed to list inbox"))),
             { "rpc.aggregate": "comms" },
           ),
+        [WS_METHODS.commsListConversations]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.commsListConversations,
+            commsRepository
+              .listConversations(input)
+              .pipe(
+                Effect.mapError((cause) => toCommsError(cause, "Failed to list conversations")),
+              ),
+            { "rpc.aggregate": "comms" },
+          ),
         [WS_METHODS.commsListConversationMessages]: (input) =>
           observeRpcEffect(
             WS_METHODS.commsListConversationMessages,

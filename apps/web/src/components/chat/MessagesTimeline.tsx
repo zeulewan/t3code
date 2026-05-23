@@ -30,6 +30,7 @@ import {
   FileIcon,
   GlobeIcon,
   HammerIcon,
+  MessageCircleIcon,
   type LucideIcon,
   SquarePenIcon,
   TerminalIcon,
@@ -70,6 +71,7 @@ import {
   formatInlineTerminalContextLabel,
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
+import { parseCommsTranscript, type ParsedCommsTranscript } from "./commsTranscript";
 import { SkillInlineText } from "./SkillInlineText";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 
@@ -691,6 +693,11 @@ function MessageAttachmentBlock({
 
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
+  const parsedCommsTranscript = parseCommsTranscript(row.message.text);
+  if (parsedCommsTranscript) {
+    return <CommsTranscriptTimelineRow row={row} transcript={parsedCommsTranscript} />;
+  }
+
   const displayedUserMessage = deriveDisplayedUserMessageState(row.message.text);
   const terminalContexts = displayedUserMessage.contexts;
   const canRevertAgentWork = typeof row.revertTurnCount === "number";
@@ -722,6 +729,77 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             </>
           }
         />
+      </div>
+    </div>
+  );
+}
+
+function CommsTranscriptTimelineRow({
+  row,
+  transcript,
+}: {
+  row: Extract<TimelineRow, { kind: "message" }>;
+  transcript: ParsedCommsTranscript;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const isOutgoing = transcript.direction === "to";
+  const typeLabel = transcript.messageType.toUpperCase();
+  const directionLabel = isOutgoing ? "To" : "From";
+  const copyText = `T3 comms ${transcript.messageType} ${transcript.direction} @${transcript.handle}:\n\n${transcript.body}`;
+
+  return (
+    <div className={cn("flex", isOutgoing ? "justify-end" : "justify-start")}>
+      <div
+        className={cn(
+          "group relative max-w-[86%] rounded-2xl border px-3.5 py-3 shadow-sm",
+          "bg-card/75 text-card-foreground backdrop-blur",
+          isOutgoing
+            ? "rounded-br-sm border-sky-500/25 bg-sky-500/8"
+            : "rounded-bl-sm border-emerald-500/25 bg-emerald-500/8",
+        )}
+        data-comms-transcript="true"
+        data-comms-direction={transcript.direction}
+        data-comms-type={transcript.messageType}
+      >
+        <div className="mb-2 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
+          <span
+            className={cn(
+              "inline-flex size-5 items-center justify-center rounded-full border",
+              isOutgoing
+                ? "border-sky-500/30 bg-sky-500/12 text-sky-600 dark:text-sky-300"
+                : "border-emerald-500/30 bg-emerald-500/12 text-emerald-600 dark:text-emerald-300",
+            )}
+          >
+            <MessageCircleIcon className="size-3" />
+          </span>
+          <span>{typeLabel}</span>
+          <span className="text-muted-foreground/35">/</span>
+          <span>
+            {directionLabel} @{transcript.handle}
+          </span>
+        </div>
+        <div className="min-w-0 text-sm leading-relaxed">
+          <ChatMarkdown
+            text={transcript.body}
+            cwd={ctx.markdownCwd}
+            isStreaming={false}
+            skills={ctx.skills}
+          />
+        </div>
+        <MessageAttachmentBlock
+          attachments={row.message.attachments}
+          className="mt-2"
+          maxImageHeightClassName="max-h-[220px]"
+          onImageExpand={ctx.onImageExpand}
+        />
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <div className="opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+            <MessageCopyButton text={copyText} />
+          </div>
+          <p className="text-right text-xs text-muted-foreground/50">
+            {formatTimestamp(row.message.createdAt, ctx.timestampFormat)}
+          </p>
+        </div>
       </div>
     </div>
   );

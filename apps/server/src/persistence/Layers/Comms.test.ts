@@ -59,6 +59,51 @@ layer("CommsRepository", (it) => {
     }),
   );
 
+  it.effect("lists conversation summaries with participants and latest message", () =>
+    Effect.gen(function* () {
+      const repository = yield* CommsRepository;
+
+      const bob = yield* repository.upsertActor({
+        kind: "agent",
+        handle: "bob",
+        displayName: "Bob",
+      });
+      const joe = yield* repository.upsertActor({
+        kind: "agent",
+        handle: "joe",
+        displayName: "Joe",
+      });
+
+      const first = yield* repository.sendMessage({
+        senderActorId: bob.actorId,
+        recipientActorIds: [joe.actorId],
+        messageType: "direct",
+        body: "First message",
+      });
+      yield* repository.sendMessage({
+        conversationId: first.conversation.conversationId,
+        senderActorId: joe.actorId,
+        recipientActorIds: [bob.actorId],
+        messageType: "direct",
+        body: "Latest message",
+      });
+
+      const summaries = yield* repository.listConversations({ kind: "dm" });
+      const summary = summaries.find(
+        (item) => item.conversation.conversationId === first.conversation.conversationId,
+      );
+
+      assert.ok(summary);
+      assert.equal(summary.conversation.kind, "dm");
+      assert.equal(summary.lastMessage?.body, "Latest message");
+      assert.equal(summary.lastSender?.handle, "joe");
+      assert.deepEqual(summary.participants.map((participant) => participant.handle).toSorted(), [
+        "bob",
+        "joe",
+      ]);
+    }),
+  );
+
   it.effect("resolves projected thread titles as comms actors before registration", () =>
     Effect.gen(function* () {
       const repository = yield* CommsRepository;

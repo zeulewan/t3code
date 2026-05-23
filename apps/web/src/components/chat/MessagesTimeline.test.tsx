@@ -206,6 +206,24 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-user-message-collapsible="false"');
   });
 
+  it("renders injected inter-agent comms as a distinct transcript card", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          buildUserTimelineEntry("T3 comms direct from @bob:\n\nI found the render gap."),
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('data-comms-transcript="true"');
+    expect(markup).toContain('data-comms-direction="from"');
+    expect(markup).toContain("From @bob");
+    expect(markup).toContain("I found the render gap.");
+    expect(markup).not.toContain('data-user-message-collapsible="false"');
+  });
+
   it("renders assistant image attachments with a download size control", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(

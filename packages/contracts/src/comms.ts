@@ -113,6 +113,15 @@ export const CommsMessageWithDelivery = Schema.Struct({
 });
 export type CommsMessageWithDelivery = typeof CommsMessageWithDelivery.Type;
 
+export const CommsConversationSummary = Schema.Struct({
+  conversation: CommsConversation,
+  participants: Schema.Array(CommsActor),
+  lastMessage: Schema.NullOr(CommsMessage),
+  lastSender: Schema.NullOr(CommsActor),
+  updatedAt: IsoDateTime,
+});
+export type CommsConversationSummary = typeof CommsConversationSummary.Type;
+
 export const CommsUpsertActorInput = Schema.Struct({
   actorId: Schema.optional(CommsActorId),
   kind: CommsActorKind,
@@ -161,6 +170,13 @@ export const CommsListInboxInput = Schema.Struct({
   limit: Schema.optional(PositiveInt),
 });
 export type CommsListInboxInput = typeof CommsListInboxInput.Type;
+
+export const CommsListConversationsInput = Schema.Struct({
+  projectId: Schema.optional(Schema.NullOr(ProjectId)),
+  kind: Schema.optional(Schema.NullOr(CommsConversationKind)),
+  limit: Schema.optional(PositiveInt),
+});
+export type CommsListConversationsInput = typeof CommsListConversationsInput.Type;
 
 export const CommsListConversationMessagesInput = Schema.Struct({
   conversationId: CommsConversationId,

@@ -3,7 +3,9 @@ import {
   CommsActorId,
   CommsDelivery,
   CommsDeliveryId,
+  CommsConversationSummary,
   CommsListActorsInput,
+  CommsListConversationsInput,
   CommsListConversationMessagesInput,
   CommsListInboxInput,
   CommsMessageWithDelivery,
@@ -59,6 +61,10 @@ export interface CommsRepositoryShape {
   readonly listInbox: (
     input: CommsListInboxInput,
   ) => Effect.Effect<ReadonlyArray<CommsMessageWithDelivery>, ProjectionRepositoryError>;
+
+  readonly listConversations: (
+    input: CommsListConversationsInput,
+  ) => Effect.Effect<ReadonlyArray<CommsConversationSummary>, ProjectionRepositoryError>;
 
   readonly listConversationMessages: (
     input: CommsListConversationMessagesInput,

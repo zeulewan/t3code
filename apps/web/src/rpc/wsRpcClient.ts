@@ -1,4 +1,11 @@
 import {
+  type CommsListActorsInput,
+  type CommsListConversationMessagesInput,
+  type CommsListConversationsInput,
+  type CommsListInboxInput,
+  type CommsSendMessageInput,
+  type CommsSetDeliveryStatusInput,
+  type CommsUpsertActorInput,
   type GitActionProgressEvent,
   type GitRunStackedActionInput,
   type GitRunStackedActionResult,
@@ -68,6 +75,17 @@ export interface WsRpcClient {
   readonly projects: {
     readonly searchEntries: RpcUnaryMethod<typeof WS_METHODS.projectsSearchEntries>;
     readonly writeFile: RpcUnaryMethod<typeof WS_METHODS.projectsWriteFile>;
+  };
+  readonly comms: {
+    readonly upsertActor: RpcUnaryMethod<typeof WS_METHODS.commsUpsertActor>;
+    readonly listActors: RpcUnaryMethod<typeof WS_METHODS.commsListActors>;
+    readonly sendMessage: RpcUnaryMethod<typeof WS_METHODS.commsSendMessage>;
+    readonly listInbox: RpcUnaryMethod<typeof WS_METHODS.commsListInbox>;
+    readonly listConversations: RpcUnaryMethod<typeof WS_METHODS.commsListConversations>;
+    readonly listConversationMessages: RpcUnaryMethod<
+      typeof WS_METHODS.commsListConversationMessages
+    >;
+    readonly setDeliveryStatus: RpcUnaryMethod<typeof WS_METHODS.commsSetDeliveryStatus>;
   };
   readonly filesystem: {
     readonly browse: RpcUnaryMethod<typeof WS_METHODS.filesystemBrowse>;
@@ -180,6 +198,22 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.projectsSearchEntries](input)),
       writeFile: (input) =>
         transport.request((client) => client[WS_METHODS.projectsWriteFile](input)),
+    },
+    comms: {
+      upsertActor: (input: CommsUpsertActorInput) =>
+        transport.request((client) => client[WS_METHODS.commsUpsertActor](input)),
+      listActors: (input: CommsListActorsInput) =>
+        transport.request((client) => client[WS_METHODS.commsListActors](input)),
+      sendMessage: (input: CommsSendMessageInput) =>
+        transport.request((client) => client[WS_METHODS.commsSendMessage](input)),
+      listInbox: (input: CommsListInboxInput) =>
+        transport.request((client) => client[WS_METHODS.commsListInbox](input)),
+      listConversations: (input: CommsListConversationsInput) =>
+        transport.request((client) => client[WS_METHODS.commsListConversations](input)),
+      listConversationMessages: (input: CommsListConversationMessagesInput) =>
+        transport.request((client) => client[WS_METHODS.commsListConversationMessages](input)),
+      setDeliveryStatus: (input: CommsSetDeliveryStatusInput) =>
+        transport.request((client) => client[WS_METHODS.commsSetDeliveryStatus](input)),
     },
     filesystem: {
       browse: (input) => transport.request((client) => client[WS_METHODS.filesystemBrowse](input)),

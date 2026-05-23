@@ -4,6 +4,7 @@ import {
   CommsConversation,
   CommsConversationId,
   CommsConversationParticipant,
+  CommsConversationSummary,
   CommsDelivery,
   CommsDeliveryId,
   CommsMessage,
@@ -56,6 +57,13 @@ const CommsInboxRow = Schema.Struct({
   sender: Schema.fromJsonString(CommsActor),
   delivery: Schema.fromJsonString(CommsDelivery),
   conversation: Schema.fromJsonString(CommsConversation),
+});
+const CommsConversationSummaryRow = Schema.Struct({
+  conversation: Schema.fromJsonString(CommsConversation),
+  participants: Schema.fromJsonString(Schema.Array(CommsActor)),
+  lastMessage: Schema.NullOr(Schema.fromJsonString(CommsMessage)),
+  lastSender: Schema.NullOr(Schema.fromJsonString(CommsActor)),
+  updatedAt: CommsConversation.fields.updatedAt,
 });
 const ProjectionThreadActorSourceRow = Schema.Struct({
   threadId: ThreadId,
@@ -611,6 +619,103 @@ const makeCommsRepository = Effect.gen(function* () {
       `,
   });
 
+  const listConversationSummaryRows = SqlSchema.findAll({
+    Request: Schema.Struct({
+      projectId: CommsConversation.fields.projectId,
+      kind: Schema.NullOr(CommsConversation.fields.kind),
+      limit: Schema.Number,
+    }),
+    Result: CommsConversationSummaryRow,
+    execute: ({ projectId, kind, limit }) =>
+      sql`
+        WITH latest_messages AS (
+          SELECT *
+          FROM (
+            SELECT
+              m.*,
+              ROW_NUMBER() OVER (
+                PARTITION BY m.conversation_id
+                ORDER BY m.created_at DESC, m.rowid DESC
+              ) AS rn
+            FROM comms_messages m
+          )
+          WHERE rn = 1
+        )
+        SELECT
+          json_object(
+            'conversationId', c.conversation_id,
+            'kind', c.kind,
+            'title', c.title,
+            'projectId', c.project_id,
+            'metadata', json(c.metadata_json),
+            'createdAt', c.created_at,
+            'updatedAt', c.updated_at
+          ) AS conversation,
+          COALESCE(
+            (
+              SELECT json_group_array(
+                json_object(
+                  'actorId', actor.actor_id,
+                  'kind', actor.kind,
+                  'handle', actor.handle,
+                  'displayName', actor.display_name,
+                  'status', actor.status,
+                  'projectId', actor.project_id,
+                  'threadId', actor.thread_id,
+                  'providerInstanceId', actor.provider_instance_id,
+                  'model', actor.model,
+                  'metadata', json(actor.metadata_json),
+                  'createdAt', actor.created_at,
+                  'updatedAt', actor.updated_at
+                )
+              )
+              FROM comms_conversation_participants participant
+              JOIN comms_actors actor ON actor.actor_id = participant.actor_id
+              WHERE participant.conversation_id = c.conversation_id
+                AND participant.left_at IS NULL
+            ),
+            '[]'
+          ) AS participants,
+          CASE
+            WHEN latest.message_id IS NULL THEN NULL
+            ELSE json_object(
+              'messageId', latest.message_id,
+              'conversationId', latest.conversation_id,
+              'senderActorId', latest.sender_actor_id,
+              'messageType', latest.message_type,
+              'body', latest.body,
+              'metadata', json(latest.metadata_json),
+              'createdAt', latest.created_at
+            )
+          END AS "lastMessage",
+          CASE
+            WHEN sender.actor_id IS NULL THEN NULL
+            ELSE json_object(
+              'actorId', sender.actor_id,
+              'kind', sender.kind,
+              'handle', sender.handle,
+              'displayName', sender.display_name,
+              'status', sender.status,
+              'projectId', sender.project_id,
+              'threadId', sender.thread_id,
+              'providerInstanceId', sender.provider_instance_id,
+              'model', sender.model,
+              'metadata', json(sender.metadata_json),
+              'createdAt', sender.created_at,
+              'updatedAt', sender.updated_at
+            )
+          END AS "lastSender",
+          COALESCE(latest.created_at, c.updated_at) AS "updatedAt"
+        FROM comms_conversations c
+        LEFT JOIN latest_messages latest ON latest.conversation_id = c.conversation_id
+        LEFT JOIN comms_actors sender ON sender.actor_id = latest.sender_actor_id
+        WHERE (${projectId} IS NULL OR c.project_id = ${projectId})
+          AND (${kind} IS NULL OR c.kind = ${kind})
+        ORDER BY COALESCE(latest.created_at, c.updated_at) DESC, c.conversation_id DESC
+        LIMIT ${limit}
+      `,
+  });
+
   const listConversationMessageRows = SqlSchema.findAll({
     Request: Schema.Struct({
       conversationId: CommsConversationId,
@@ -669,7 +774,7 @@ const makeCommsRepository = Effect.gen(function* () {
         JOIN comms_conversations c ON c.conversation_id = m.conversation_id
         JOIN comms_deliveries d ON d.message_id = m.message_id
         WHERE m.conversation_id = ${conversationId}
-        ORDER BY m.created_at DESC, m.message_id DESC
+        ORDER BY m.created_at DESC, m.rowid DESC
         LIMIT ${limit}
       `,
   });
@@ -768,6 +873,22 @@ const makeCommsRepository = Effect.gen(function* () {
         }),
       ),
     );
+
+  const toConversationSummary = (row: Schema.Schema.Type<typeof CommsConversationSummaryRow>) =>
+    Effect.gen(function* () {
+      const participants = yield* Effect.forEach(row.participants, deriveActorFromThread, {
+        concurrency: 8,
+      });
+      const lastSender =
+        row.lastSender === null ? null : yield* deriveActorFromThread(row.lastSender);
+      return {
+        conversation: row.conversation,
+        participants,
+        lastMessage: row.lastMessage,
+        lastSender,
+        updatedAt: row.updatedAt,
+      } satisfies CommsConversationSummary;
+    });
 
   const upsertActor: CommsRepositoryShape["upsertActor"] = (input) =>
     Effect.gen(function* () {
@@ -958,6 +1079,16 @@ const makeCommsRepository = Effect.gen(function* () {
       Effect.mapError(toPersistenceSqlError("CommsRepository.listInbox:query")),
     );
 
+  const listConversations: CommsRepositoryShape["listConversations"] = (input) =>
+    listConversationSummaryRows({
+      projectId: input.projectId ?? null,
+      kind: input.kind ?? null,
+      limit: input.limit ?? 50,
+    }).pipe(
+      Effect.flatMap((rows) => Effect.forEach(rows, toConversationSummary, { concurrency: 8 })),
+      Effect.mapError(toPersistenceSqlError("CommsRepository.listConversations:query")),
+    );
+
   const listConversationMessages: CommsRepositoryShape["listConversationMessages"] = (input) =>
     listConversationMessageRows({
       conversationId: input.conversationId,
@@ -992,6 +1123,7 @@ const makeCommsRepository = Effect.gen(function* () {
     listActors,
     sendMessage,
     listInbox,
+    listConversations,
     listConversationMessages,
     setDeliveryStatus,
     getDeliveryById,
