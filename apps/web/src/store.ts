@@ -18,7 +18,11 @@ import type {
   ScopedProjectRef,
   ScopedThreadRef,
 } from "@t3tools/contracts";
-import { isProviderDriverKind, ProviderDriverKind } from "@t3tools/contracts";
+import {
+  DEFAULT_THREAD_IDENTITY,
+  isProviderDriverKind,
+  ProviderDriverKind,
+} from "@t3tools/contracts";
 import type { ThreadId, TurnId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { resolveModelSlugForProvider } from "@t3tools/shared/model";
@@ -259,6 +263,7 @@ function mapThread(thread: OrchestrationThread, environmentId: EnvironmentId): T
     codexThreadId: null,
     projectId: thread.projectId,
     title: thread.title,
+    identity: thread.identity,
     modelSelection: normalizeModelSelection(thread.modelSelection),
     runtimeMode: thread.runtimeMode,
     interactionMode: thread.interactionMode,
@@ -293,6 +298,7 @@ function mapThreadShell(
     codexThreadId: null,
     projectId: thread.projectId,
     title: thread.title,
+    identity: thread.identity,
     modelSelection: normalizeModelSelection(thread.modelSelection),
     runtimeMode: thread.runtimeMode,
     interactionMode: thread.interactionMode,
@@ -313,6 +319,7 @@ function mapThreadShell(
     environmentId,
     projectId: thread.projectId,
     title: thread.title,
+    identity: thread.identity,
     interactionMode: thread.interactionMode,
     session,
     createdAt: thread.createdAt,
@@ -341,6 +348,7 @@ function toThreadShell(thread: Thread): ThreadShell {
     codexThreadId: thread.codexThreadId,
     projectId: thread.projectId,
     title: thread.title,
+    identity: thread.identity,
     modelSelection: thread.modelSelection,
     runtimeMode: thread.runtimeMode,
     interactionMode: thread.interactionMode,
@@ -405,6 +413,19 @@ function threadSessionsEqual(
   );
 }
 
+function threadIdentitiesEqual(
+  left: Thread["identity"] | undefined,
+  right: Thread["identity"],
+): boolean {
+  return (
+    left !== undefined &&
+    left.preset === right.preset &&
+    left.name === right.name &&
+    left.icon === right.icon &&
+    left.color === right.color
+  );
+}
+
 function sidebarThreadSummariesEqual(
   left: SidebarThreadSummary | undefined,
   right: SidebarThreadSummary,
@@ -414,6 +435,7 @@ function sidebarThreadSummariesEqual(
     left.id === right.id &&
     left.projectId === right.projectId &&
     left.title === right.title &&
+    threadIdentitiesEqual(left.identity, right.identity) &&
     left.interactionMode === right.interactionMode &&
     threadSessionsEqual(left.session, right.session) &&
     left.createdAt === right.createdAt &&
@@ -437,6 +459,7 @@ function threadShellsEqual(left: ThreadShell | undefined, right: ThreadShell): b
     left.codexThreadId === right.codexThreadId &&
     left.projectId === right.projectId &&
     left.title === right.title &&
+    threadIdentitiesEqual(left.identity, right.identity) &&
     left.modelSelection === right.modelSelection &&
     left.runtimeMode === right.runtimeMode &&
     left.interactionMode === right.interactionMode &&
@@ -1309,6 +1332,7 @@ function applyEnvironmentOrchestrationEvent(
           id: event.payload.threadId,
           projectId: event.payload.projectId,
           title: event.payload.title,
+          identity: event.payload.identity ?? DEFAULT_THREAD_IDENTITY,
           modelSelection: event.payload.modelSelection,
           runtimeMode: event.payload.runtimeMode,
           interactionMode: event.payload.interactionMode,
@@ -1351,6 +1375,7 @@ function applyEnvironmentOrchestrationEvent(
       return updateThreadState(state, event.payload.threadId, (thread) => ({
         ...thread,
         ...(event.payload.title !== undefined ? { title: event.payload.title } : {}),
+        ...(event.payload.identity !== undefined ? { identity: event.payload.identity } : {}),
         ...(event.payload.modelSelection !== undefined
           ? { modelSelection: normalizeModelSelection(event.payload.modelSelection) }
           : {}),

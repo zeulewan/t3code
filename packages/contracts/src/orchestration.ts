@@ -376,10 +376,66 @@ export const OrchestrationLatestTurn = Schema.Struct({
 });
 export type OrchestrationLatestTurn = typeof OrchestrationLatestTurn.Type;
 
+export const ThreadIdentityPreset = Schema.Literals([
+  "af_sky",
+  "af_alloy",
+  "af_sarah",
+  "am_adam",
+  "am_echo",
+  "am_onyx",
+  "bm_fable",
+]);
+export type ThreadIdentityPreset = typeof ThreadIdentityPreset.Type;
+
+export const ThreadIdentityName = Schema.Literals([
+  "Sky",
+  "Alloy",
+  "Sarah",
+  "Adam",
+  "Echo",
+  "Onyx",
+  "Fable",
+]);
+export type ThreadIdentityName = typeof ThreadIdentityName.Type;
+
+export const ThreadIdentityIcon = Schema.Literals([
+  "cloud",
+  "diamond",
+  "heart",
+  "leaf",
+  "waveform",
+  "shield",
+  "book",
+]);
+export type ThreadIdentityIcon = typeof ThreadIdentityIcon.Type;
+
+export const ThreadIdentityColor = TrimmedNonEmptyString.check(
+  Schema.isPattern(/^#[0-9A-Fa-f]{6}$/),
+);
+export type ThreadIdentityColor = typeof ThreadIdentityColor.Type;
+
+export const ThreadIdentity = Schema.Struct({
+  preset: ThreadIdentityPreset,
+  name: ThreadIdentityName,
+  icon: ThreadIdentityIcon,
+  color: ThreadIdentityColor,
+});
+export type ThreadIdentity = typeof ThreadIdentity.Type;
+
+export const DEFAULT_THREAD_IDENTITY: ThreadIdentity = {
+  preset: "af_sky",
+  name: "Sky",
+  icon: "cloud",
+  color: "#3A86FF",
+};
+
 export const OrchestrationThread = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
+  identity: ThreadIdentity.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_THREAD_IDENTITY)),
+  ),
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode.pipe(
@@ -426,6 +482,9 @@ export const OrchestrationThreadShell = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
+  identity: ThreadIdentity.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_THREAD_IDENTITY)),
+  ),
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode.pipe(
@@ -531,6 +590,7 @@ const ThreadCreateCommand = Schema.Struct({
   threadId: ThreadId,
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
+  identity: Schema.optional(ThreadIdentity),
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode.pipe(
@@ -564,6 +624,7 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   commandId: CommandId,
   threadId: ThreadId,
   title: Schema.optional(TrimmedNonEmptyString),
+  identity: Schema.optional(ThreadIdentity),
   modelSelection: Schema.optional(ModelSelection),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
@@ -588,6 +649,7 @@ const ThreadInteractionModeSetCommand = Schema.Struct({
 const ThreadTurnStartBootstrapCreateThread = Schema.Struct({
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
+  identity: Schema.optional(ThreadIdentity),
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
@@ -622,6 +684,7 @@ export const ThreadTurnStartCommand = Schema.Struct({
   }),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
+  autoTitle: Schema.optional(Schema.Boolean),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
@@ -643,6 +706,7 @@ const ClientThreadTurnStartCommand = Schema.Struct({
   }),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
+  autoTitle: Schema.optional(Schema.Boolean),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
@@ -906,6 +970,7 @@ export const ThreadCreatedPayload = Schema.Struct({
   threadId: ThreadId,
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
+  identity: Schema.optional(ThreadIdentity),
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
   interactionMode: ProviderInteractionMode.pipe(
@@ -936,6 +1001,7 @@ export const ThreadUnarchivedPayload = Schema.Struct({
 export const ThreadMetaUpdatedPayload = Schema.Struct({
   threadId: ThreadId,
   title: Schema.optional(TrimmedNonEmptyString),
+  identity: Schema.optional(ThreadIdentity),
   modelSelection: Schema.optional(ModelSelection),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
@@ -973,6 +1039,7 @@ export const ThreadTurnStartRequestedPayload = Schema.Struct({
   messageId: MessageId,
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
+  autoTitle: Schema.optional(Schema.Boolean),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),

@@ -1,4 +1,10 @@
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import {
+  DEFAULT_THREAD_IDENTITY,
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+} from "@t3tools/contracts";
 import { scopeProjectRef } from "@t3tools/client-runtime";
 import { describe, expect, it } from "vitest";
 
@@ -74,6 +80,7 @@ function makeSidebarThreadSummary(
     hasPendingUserInput: false,
     hasActionableProposedPlan: false,
     ...overrides,
+    identity: overrides.identity ?? DEFAULT_THREAD_IDENTITY,
   };
 }
 

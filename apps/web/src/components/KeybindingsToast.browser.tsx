@@ -2,6 +2,7 @@ import "../index.css";
 
 import {
   DEFAULT_SERVER_SETTINGS,
+  DEFAULT_THREAD_IDENTITY,
   EnvironmentId,
   ORCHESTRATION_WS_METHODS,
   type MessageId,
@@ -184,6 +185,7 @@ function createMinimalSnapshot(): OrchestrationReadModel {
         id: THREAD_ID,
         projectId: PROJECT_ID,
         title: "Test thread",
+        identity: DEFAULT_THREAD_IDENTITY,
         modelSelection: {
           instanceId: ProviderInstanceId.make("codex"),
           model: "gpt-5",

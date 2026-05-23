@@ -43,6 +43,7 @@ import { ProjectionThreadSessionRepositoryLive } from "../../persistence/Layers/
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 import { ProjectionThreadRepositoryLive } from "../../persistence/Layers/ProjectionThreads.ts";
 import { ServerConfig } from "../../config.ts";
+import { chooseNextThreadIdentity } from "@t3tools/shared/threadIdentity";
 import { compactThreadActivityPayload } from "../activityPayload.ts";
 import {
   OrchestrationProjectionPipeline,
@@ -570,11 +571,17 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       "applyThreadsProjection",
     )(function* (event, attachmentSideEffects) {
       switch (event.type) {
-        case "thread.created":
+        case "thread.created": {
+          const projectThreads = yield* projectionThreadRepository.listByProjectId({
+            projectId: event.payload.projectId,
+          });
           yield* projectionThreadRepository.upsert({
             threadId: event.payload.threadId,
             projectId: event.payload.projectId,
             title: event.payload.title,
+            identity:
+              event.payload.identity ??
+              chooseNextThreadIdentity(event.payload.projectId, projectThreads),
             modelSelection: event.payload.modelSelection,
             runtimeMode: event.payload.runtimeMode,
             interactionMode: event.payload.interactionMode,
@@ -591,6 +598,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             deletedAt: null,
           });
           return;
+        }
 
         case "thread.archived": {
           const existingRow = yield* projectionThreadRepository.getById({
@@ -632,6 +640,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           yield* projectionThreadRepository.upsert({
             ...existingRow.value,
             ...(event.payload.title !== undefined ? { title: event.payload.title } : {}),
+            ...(event.payload.identity !== undefined ? { identity: event.payload.identity } : {}),
             ...(event.payload.modelSelection !== undefined
               ? { modelSelection: event.payload.modelSelection }
               : {}),

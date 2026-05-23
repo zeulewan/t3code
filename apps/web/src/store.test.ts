@@ -2,6 +2,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime";
 import {
   CheckpointRef,
   DEFAULT_MODEL,
+  DEFAULT_THREAD_IDENTITY,
   EnvironmentId,
   EventId,
   MessageId,
@@ -85,6 +86,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     branch: null,
     worktreePath: null,
     ...overrides,
+    identity: overrides.identity ?? DEFAULT_THREAD_IDENTITY,
   };
 }
 
@@ -120,6 +122,7 @@ function makeState(thread: Thread): AppState {
         codexThreadId: thread.codexThreadId,
         projectId: thread.projectId,
         title: thread.title,
+        identity: thread.identity,
         modelSelection: thread.modelSelection,
         runtimeMode: thread.runtimeMode,
         interactionMode: thread.interactionMode,

@@ -1,5 +1,6 @@
 import {
   CheckpointRef,
+  DEFAULT_THREAD_IDENTITY,
   EventId,
   MessageId,
   ProjectId,
@@ -286,6 +287,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           id: ThreadId.make("thread-1"),
           projectId: asProjectId("project-1"),
           title: "Thread 1",
+          identity: DEFAULT_THREAD_IDENTITY,
           modelSelection: {
             instanceId: ProviderInstanceId.make("codex"),
             model: "gpt-5-codex",
@@ -396,6 +398,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           id: ThreadId.make("thread-1"),
           projectId: asProjectId("project-1"),
           title: "Thread 1",
+          identity: DEFAULT_THREAD_IDENTITY,
           modelSelection: {
             instanceId: ProviderInstanceId.make("codex"),
             model: "gpt-5-codex",

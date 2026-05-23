@@ -2,6 +2,7 @@ import {
   CheckpointRef,
   CommandId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
+  DEFAULT_THREAD_IDENTITY,
   MessageId,
   ProjectId,
   ThreadId,
@@ -134,6 +135,7 @@ describe("OrchestrationEngine", () => {
           id: ThreadId.make("thread-bootstrap"),
           projectId: asProjectId("project-bootstrap"),
           title: "Bootstrap Thread",
+          identity: DEFAULT_THREAD_IDENTITY,
           modelSelection: {
             instanceId: ProviderInstanceId.make("codex"),
             model: "gpt-5-codex",

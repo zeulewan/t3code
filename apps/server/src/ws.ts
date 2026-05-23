@@ -537,6 +537,9 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 threadId: command.threadId,
                 projectId: bootstrap.createThread.projectId,
                 title: bootstrap.createThread.title,
+                ...(bootstrap.createThread.identity !== undefined
+                  ? { identity: bootstrap.createThread.identity }
+                  : {}),
                 modelSelection: bootstrap.createThread.modelSelection,
                 runtimeMode: bootstrap.createThread.runtimeMode,
                 interactionMode: bootstrap.createThread.interactionMode,

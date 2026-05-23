@@ -22,8 +22,12 @@ import {
   type OrchestrationThreadShell,
   ModelSelection,
   ProjectId,
+  ThreadIdentityColor,
+  ThreadIdentityIcon,
+  ThreadIdentityPreset,
   ThreadId,
 } from "@t3tools/contracts";
+import { getThreadIdentityPreset } from "@t3tools/shared/threadIdentity";
 import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -74,11 +78,29 @@ const ProjectionThreadMessageDbRowSchema = ProjectionThreadMessage.mapFields(
   }),
 );
 const ProjectionThreadProposedPlanDbRowSchema = ProjectionThreadProposedPlan;
-const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
-  Struct.assign({
-    modelSelection: Schema.fromJsonString(ModelSelection),
-  }),
-);
+const ProjectionThreadDbRowSchema = Schema.Struct({
+  threadId: ProjectionThread.fields.threadId,
+  projectId: ProjectionThread.fields.projectId,
+  title: ProjectionThread.fields.title,
+  identityPreset: ThreadIdentityPreset,
+  identityIcon: ThreadIdentityIcon,
+  identityColor: ThreadIdentityColor,
+  modelSelection: Schema.fromJsonString(ModelSelection),
+  runtimeMode: ProjectionThread.fields.runtimeMode,
+  interactionMode: ProjectionThread.fields.interactionMode,
+  branch: ProjectionThread.fields.branch,
+  worktreePath: ProjectionThread.fields.worktreePath,
+  latestTurnId: ProjectionThread.fields.latestTurnId,
+  createdAt: ProjectionThread.fields.createdAt,
+  updatedAt: ProjectionThread.fields.updatedAt,
+  archivedAt: ProjectionThread.fields.archivedAt,
+  latestUserMessageAt: ProjectionThread.fields.latestUserMessageAt,
+  pendingApprovalCount: ProjectionThread.fields.pendingApprovalCount,
+  pendingUserInputCount: ProjectionThread.fields.pendingUserInputCount,
+  hasActionableProposedPlan: ProjectionThread.fields.hasActionableProposedPlan,
+  deletedAt: ProjectionThread.fields.deletedAt,
+});
+type ProjectionThreadDbRow = typeof ProjectionThreadDbRowSchema.Type;
 const ProjectionThreadActivityDbRowSchema = ProjectionThreadActivity.mapFields(
   Struct.assign({
     payload: Schema.fromJsonString(Schema.Unknown),
@@ -239,6 +261,16 @@ function mapProjectShellRow(
   };
 }
 
+function mapThreadIdentity(row: ProjectionThreadDbRow) {
+  const preset = getThreadIdentityPreset(row.identityPreset);
+  return {
+    preset: row.identityPreset,
+    name: preset.name,
+    icon: row.identityIcon,
+    color: row.identityColor,
+  };
+}
+
 function mapProposedPlanRow(
   row: Schema.Schema.Type<typeof ProjectionThreadProposedPlanDbRowSchema>,
 ): OrchestrationProposedPlan {
@@ -324,6 +356,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           thread_id AS "threadId",
           project_id AS "projectId",
           title,
+          identity_preset AS "identityPreset",
+          identity_icon AS "identityIcon",
+          identity_color AS "identityColor",
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
           interaction_mode AS "interactionMode",
@@ -352,6 +387,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           thread_id AS "threadId",
           project_id AS "projectId",
           title,
+          identity_preset AS "identityPreset",
+          identity_icon AS "identityIcon",
+          identity_color AS "identityColor",
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
           interaction_mode AS "interactionMode",
@@ -382,6 +420,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           thread_id AS "threadId",
           project_id AS "projectId",
           title,
+          identity_preset AS "identityPreset",
+          identity_icon AS "identityIcon",
+          identity_color AS "identityColor",
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
           interaction_mode AS "interactionMode",
@@ -744,6 +785,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           thread_id AS "threadId",
           project_id AS "projectId",
           title,
+          identity_preset AS "identityPreset",
+          identity_icon AS "identityIcon",
+          identity_color AS "identityColor",
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
           interaction_mode AS "interactionMode",
@@ -1176,6 +1220,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 id: row.threadId,
                 projectId: row.projectId,
                 title: row.title,
+                identity: mapThreadIdentity(row),
                 modelSelection: row.modelSelection,
                 runtimeMode: row.runtimeMode,
                 interactionMode: row.interactionMode,
@@ -1374,6 +1419,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                   id: row.threadId,
                   projectId: row.projectId,
                   title: row.title,
+                  identity: mapThreadIdentity(row),
                   modelSelection: row.modelSelection,
                   runtimeMode: row.runtimeMode,
                   interactionMode: row.interactionMode,
@@ -1503,6 +1549,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                       id: row.threadId,
                       projectId: row.projectId,
                       title: row.title,
+                      identity: mapThreadIdentity(row),
                       modelSelection: row.modelSelection,
                       runtimeMode: row.runtimeMode,
                       interactionMode: row.interactionMode,
@@ -1637,6 +1684,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                   id: row.threadId,
                   projectId: row.projectId,
                   title: row.title,
+                  identity: mapThreadIdentity(row),
                   modelSelection: row.modelSelection,
                   runtimeMode: row.runtimeMode,
                   interactionMode: row.interactionMode,
@@ -1877,6 +1925,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         id: threadRow.value.threadId,
         projectId: threadRow.value.projectId,
         title: threadRow.value.title,
+        identity: mapThreadIdentity(threadRow.value),
         modelSelection: threadRow.value.modelSelection,
         runtimeMode: threadRow.value.runtimeMode,
         interactionMode: threadRow.value.interactionMode,
@@ -1971,6 +2020,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         id: threadRow.value.threadId,
         projectId: threadRow.value.projectId,
         title: threadRow.value.title,
+        identity: mapThreadIdentity(threadRow.value),
         modelSelection: threadRow.value.modelSelection,
         runtimeMode: threadRow.value.runtimeMode,
         interactionMode: threadRow.value.interactionMode,

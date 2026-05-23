@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_RUNTIME_MODE,
+  DEFAULT_THREAD_IDENTITY,
   EnvironmentId,
   ProjectId,
   ProviderInstanceId,
@@ -35,6 +36,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     turnDiffSummaries: [],
     activities: [],
     ...overrides,
+    identity: overrides.identity ?? DEFAULT_THREAD_IDENTITY,
   };
 }
 

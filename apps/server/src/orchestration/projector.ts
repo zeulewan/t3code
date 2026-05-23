@@ -5,6 +5,7 @@ import {
   OrchestrationSession,
   OrchestrationThread,
 } from "@t3tools/contracts";
+import { chooseNextThreadIdentity } from "@t3tools/shared/threadIdentity";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
@@ -254,6 +255,8 @@ export function projectEvent(
             id: payload.threadId,
             projectId: payload.projectId,
             title: payload.title,
+            identity:
+              payload.identity ?? chooseNextThreadIdentity(payload.projectId, nextBase.threads),
             modelSelection: payload.modelSelection,
             runtimeMode: payload.runtimeMode,
             interactionMode: payload.interactionMode,
@@ -320,6 +323,7 @@ export function projectEvent(
           ...nextBase,
           threads: updateThread(nextBase.threads, payload.threadId, {
             ...(payload.title !== undefined ? { title: payload.title } : {}),
+            ...(payload.identity !== undefined ? { identity: payload.identity } : {}),
             ...(payload.modelSelection !== undefined
               ? { modelSelection: payload.modelSelection }
               : {}),
