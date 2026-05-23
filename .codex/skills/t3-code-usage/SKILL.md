@@ -56,6 +56,8 @@ node apps/server/src/bin.ts --log-level error agent list --project t3code --base
 
 Developer/operator only: send a user-role turn to an existing agent by thread id, title, or comms handle.
 Agents should not use `agent send` to message each other; use `comms send` instead.
+If a message appears in another agent's chat without a `T3 comms ... from @handle` prefix,
+it was probably sent through `agent send` and should be treated as a CLI usage mistake.
 
 ```sh
 node apps/server/src/bin.ts --log-level error agent send <thread-or-handle> '<message>' --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
@@ -106,6 +108,7 @@ node apps/server/src/bin.ts --log-level error comms send <target-handle> '<messa
 
 The sender is autodetected from `T3_THREAD_ID`, with `T3_COMMS_HANDLE` as a fallback.
 Do not put the sender handle in the positional arguments.
+Do not use provider names such as `codex` or `claude` as sender handles; comms sender identity is the registered agent handle for the current thread.
 If autodetect fails inside an agent session, register the current thread and retry the same target-only command:
 
 ```sh
@@ -116,6 +119,16 @@ Outside an agent session, the developer-only sender override requires a literal 
 
 ```sh
 node apps/server/src/bin.ts --log-level error comms send --from <sender-handle> --developer-override <target-handle> '<message>' --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733 --type direct
+```
+
+Common mistake to avoid:
+
+```sh
+# Wrong for agent-to-agent comms: creates a raw user turn with no comms prefix.
+node apps/server/src/bin.ts --log-level error agent send <target-thread-or-handle> '<message>'
+
+# Wrong for normal comms: sender is not positional and provider names are not handles.
+node apps/server/src/bin.ts --log-level error comms send codex <target-handle> '<message>'
 ```
 
 Read inbox:
