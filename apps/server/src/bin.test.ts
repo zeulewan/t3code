@@ -35,6 +35,7 @@ import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import { environmentAuthenticatedAuthLayer } from "./auth/http.ts";
+import { T3_COMMS_HANDLE_ENV, T3_THREAD_ID_ENV } from "./commsEnvironment.ts";
 
 const ONE_PIXEL_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
@@ -49,6 +50,27 @@ const runCli = (args: ReadonlyArray<string>, command = cli) =>
 const runConnectCli = (args: ReadonlyArray<string>) => runCli(args, connectCli);
 const runCliWithRuntime = (args: ReadonlyArray<string>) =>
   runCli(args).pipe(Effect.provide(CliRuntimeLayer));
+
+const withProcessEnv = <A, E, R>(
+  name: string,
+  value: string,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => process.env[name]),
+    () =>
+      Effect.sync(() => {
+        process.env[name] = value;
+      }).pipe(Effect.flatMap(() => effect)),
+    (previous) =>
+      Effect.sync(() => {
+        if (previous === undefined) {
+          delete process.env[name];
+        } else {
+          process.env[name] = previous;
+        }
+      }),
+  );
 
 const captureStdout = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
@@ -610,6 +632,30 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
           );
           assert.isTrue(sendOutput.output.includes(`Sent turn to ${thread?.id}.`));
 
+          yield* runCliWithRuntime(["comms", "register", "receiver", "--base-dir", baseDir]);
+          const commsOutput = yield* withProcessEnv(
+            T3_THREAD_ID_ENV,
+            thread?.id ?? "",
+            captureStdout(
+              runCli([
+                "comms",
+                "send",
+                "receiver",
+                "Hello from autodetected thread.",
+                "--type",
+                "defer",
+                "--base-dir",
+                baseDir,
+              ]),
+            ),
+          );
+          assert.isTrue(commsOutput.output.includes("Sent defer message"));
+          const autodetectedInboxOutput = yield* captureStdout(
+            runCli(["comms", "inbox", "receiver", "--base-dir", baseDir]),
+          );
+          assert.isTrue(autodetectedInboxOutput.output.includes("@renamed-agent"));
+          assert.isTrue(autodetectedInboxOutput.output.includes("Hello from autodetected thread."));
+
           const imagePath = NodePath.join(workspaceRoot, "cli-attachment.png");
           NodeFS.writeFileSync(imagePath, Buffer.from(ONE_PIXEL_PNG_BASE64, "base64"));
 
@@ -750,6 +796,42 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
         runCli(["comms", "inbox", "receiver", "--base-dir", baseDir]),
       );
       assert.equal(inboxOutput.output, "Inbox is empty.");
+    }),
+  );
+
+  it.effect("sends comms with an autodetected sender handle", () =>
+    Effect.gen(function* () {
+      const baseDir = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "t3-cli-comms-autodetect-test-"),
+      );
+
+      yield* runCliWithRuntime(["comms", "register", "sender", "--base-dir", baseDir]);
+      yield* runCliWithRuntime(["comms", "register", "receiver", "--base-dir", baseDir]);
+
+      const sendOutput = yield* withProcessEnv(
+        T3_COMMS_HANDLE_ENV,
+        "sender",
+        captureStdout(
+          runCli([
+            "comms",
+            "send",
+            "receiver",
+            "hello via autodetected handle",
+            "--type",
+            "defer",
+            "--base-dir",
+            baseDir,
+          ]),
+        ),
+      );
+
+      assert.isTrue(sendOutput.output.includes("Sent defer message"));
+
+      const inboxOutput = yield* captureStdout(
+        runCli(["comms", "inbox", "receiver", "--base-dir", baseDir]),
+      );
+      assert.isTrue(inboxOutput.output.includes("@sender"));
+      assert.isTrue(inboxOutput.output.includes("hello via autodetected handle"));
     }),
   );
 

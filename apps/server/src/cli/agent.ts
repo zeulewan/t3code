@@ -25,6 +25,7 @@ import * as Path from "effect/Path";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 
 import { makeThreadCommsHandle } from "../commsHandles.ts";
+import { T3_THREAD_ID_ENV } from "../commsEnvironment.ts";
 import {
   isSupportedProviderImageInputMimeType,
   supportedProviderImageInputMimeTypesLabel,
@@ -178,17 +179,13 @@ function cliCommandPrefix(): string {
   return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
-function commsSendInstruction(input: {
-  readonly context: OrchestrationCliContext;
-  readonly handle: string;
-}): string {
+function commsSendInstruction(input: { readonly context: OrchestrationCliContext }): string {
   const devUrlPart = input.context.devUrl
     ? ` --dev-url ${shellQuote(input.context.devUrl.href)}`
     : "";
   return [
     cliCommandPrefix(),
     "--log-level error comms send",
-    input.handle,
     "<target-handle>",
     "'<message>'",
     "--base-dir",
@@ -213,8 +210,8 @@ function withAgentCommsInstructions(input: {
     "- When asked to message another agent, run the comms CLI instead of saying you cannot message them.",
     `- Command template: ${commsSendInstruction({
       context: input.context,
-      handle: input.handle,
     })}`,
+    `- The CLI autodetects you from ${T3_THREAD_ID_ENV}; if that fails, use the explicit form with your handle: comms send ${input.handle} <target-handle> '<message>'.`,
     "- Handles are written without the @ in the command, for example: bob or joe.",
   ].join("\n");
 }

@@ -6,6 +6,7 @@ import {
   CommandId,
   MessageId,
   ProviderInstanceId,
+  ThreadId,
   type CommsActorId,
   type CommsDelivery,
   type CommsMessageWithDelivery,
@@ -19,6 +20,11 @@ import * as Option from "effect/Option";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 
 import { makeThreadCommsHandle } from "../commsHandles.ts";
+import {
+  readAutoCommsSenderEnv,
+  T3_COMMS_HANDLE_ENV,
+  T3_THREAD_ID_ENV,
+} from "../commsEnvironment.ts";
 import { projectLocationFlags } from "./config.ts";
 import {
   OrchestrationCliError,
@@ -171,6 +177,82 @@ function parseRecipientHandles(raw: string): ReadonlyArray<string> {
     .map((entry) => entry.trim().replace(/^@/, ""))
     .filter((entry) => entry.length > 0);
 }
+
+type CommsSendInput =
+  | {
+      readonly mode: "explicit";
+      readonly from: string;
+      readonly to: string;
+      readonly message: string;
+    }
+  | {
+      readonly mode: "autodetect";
+      readonly to: string;
+      readonly message: string;
+    };
+
+function parseCommsSendArgs(parts: ReadonlyArray<string>): CommsSendInput {
+  if (parts.length === 3) {
+    return {
+      mode: "explicit",
+      from: parts[0] ?? "",
+      to: parts[1] ?? "",
+      message: parts[2] ?? "",
+    };
+  }
+  if (parts.length === 2) {
+    return {
+      mode: "autodetect",
+      to: parts[0] ?? "",
+      message: parts[1] ?? "",
+    };
+  }
+  throw new OrchestrationCliError({
+    message: "Usage: comms send [from-handle] <target-handle> '<message>'.",
+  });
+}
+
+const getActorByThreadId = (context: OrchestrationCliContext, rawThreadId: string) =>
+  Effect.gen(function* () {
+    const threadId = ThreadId.make(rawThreadId.trim());
+    const actors = yield* context.commsRepository.listActors({
+      projectId: null,
+      includeInactive: false,
+    });
+    const actor = actors.find((entry) => entry.kind === "agent" && entry.threadId === threadId);
+    if (actor) {
+      return actor;
+    }
+
+    const thread = context.snapshot.threads.find((entry) => entry.id === threadId) ?? null;
+    if (thread !== null && thread.deletedAt !== null) {
+      return yield* new OrchestrationCliError({
+        message: `Cannot autodetect comms sender from ${T3_THREAD_ID_ENV}: thread ${threadId} is deleted.`,
+      });
+    }
+    if (thread !== null && thread.archivedAt !== null) {
+      return yield* new OrchestrationCliError({
+        message: `Cannot autodetect comms sender from ${T3_THREAD_ID_ENV}: thread ${threadId} is archived.`,
+      });
+    }
+    return yield* new OrchestrationCliError({
+      message: `Cannot autodetect comms sender from ${T3_THREAD_ID_ENV}: no active comms actor is registered for thread ${threadId}.`,
+    });
+  });
+
+const detectSenderActor = (context: OrchestrationCliContext) =>
+  Effect.gen(function* () {
+    const detected = readAutoCommsSenderEnv();
+    if (detected.threadId) {
+      return yield* getActorByThreadId(context, detected.threadId);
+    }
+    if (detected.handle) {
+      return yield* getActorByHandle(context, detected.handle.replace(/^@/, ""));
+    }
+    return yield* new OrchestrationCliError({
+      message: `Cannot autodetect comms sender. Run this from an agent session with ${T3_THREAD_ID_ENV} set, set ${T3_COMMS_HANDLE_ENV}, or use the explicit form: comms send <from-handle> <target-handle> '<message>'.`,
+    });
+  });
 
 function formatActors(actors: ReadonlyArray<CommsActor>): string {
   if (actors.length === 0) return "No comms actors registered.";
@@ -364,9 +446,12 @@ const commsActorsCommand = Command.make("actors", {
 
 const commsSendCommand = Command.make("send", {
   ...projectLocationFlags,
-  from: Argument.string("from").pipe(Argument.withDescription("Sender handle.")),
-  to: Argument.string("to").pipe(Argument.withDescription("Recipient handle or comma list.")),
-  message: Argument.string("message").pipe(Argument.withDescription("Message body.")),
+  args: Argument.string("args").pipe(
+    Argument.withDescription(
+      "Either <target-handle> <message> with autodetected sender, or <from-handle> <target-handle> <message>.",
+    ),
+    Argument.between(2, 3),
+  ),
   type: messageTypeFlag,
   noDeliver: noDeliverFlag,
 }).pipe(
@@ -374,9 +459,13 @@ const commsSendCommand = Command.make("send", {
   Command.withHandler((flags) =>
     runWithOrchestrationCli(flags, (context: OrchestrationCliContext) =>
       Effect.gen(function* () {
-        const sender = yield* getActorByHandle(context, flags.from.replace(/^@/, ""));
+        const input = parseCommsSendArgs(flags.args);
+        const sender =
+          input.mode === "explicit"
+            ? yield* getActorByHandle(context, input.from.replace(/^@/, ""))
+            : yield* detectSenderActor(context);
         yield* requireActiveActorThread(context, sender, "sender");
-        const recipientHandles = parseRecipientHandles(flags.to);
+        const recipientHandles = parseRecipientHandles(input.to);
         if (recipientHandles.length === 0) {
           return yield* new OrchestrationCliError({
             message: "At least one recipient is required.",
@@ -408,7 +497,7 @@ const commsSendCommand = Command.make("send", {
           senderActorId: sender.actorId,
           recipientActorIds: [firstRecipient, ...restRecipients],
           messageType: flags.type,
-          body: flags.message,
+          body: input.message,
           projectId: sender.projectId,
           metadata: {
             source: "t3 comms send",
@@ -421,7 +510,7 @@ const commsSendCommand = Command.make("send", {
               recipientsById: new Map(recipients.map((actor) => [actor.actorId, actor] as const)),
               deliveries: sent.deliveries,
               messageType: flags.type,
-              body: flags.message,
+              body: input.message,
             })
           : {
               attempted: 0,

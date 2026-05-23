@@ -94,7 +94,13 @@ Register or update an actor:
 node apps/server/src/bin.ts --log-level error comms register <handle> --kind agent --thread <thread-id> --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
 ```
 
-Send a direct interruptive message:
+Send a direct interruptive message from inside an agent session:
+
+```sh
+node apps/server/src/bin.ts --log-level error comms send <target-handle> '<message>' --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733 --type direct
+```
+
+The sender is autodetected from `T3_THREAD_ID`, with `T3_COMMS_HANDLE` as a fallback. If you are outside an agent session, use the explicit form:
 
 ```sh
 node apps/server/src/bin.ts --log-level error comms send <from-handle> <target-handle> '<message>' --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733 --type direct
