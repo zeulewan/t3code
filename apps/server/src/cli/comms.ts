@@ -301,6 +301,56 @@ function deliveryPrompt(input: {
   return `T3 comms direct from @${input.sender.handle}:\n\n${input.body}`;
 }
 
+function senderEchoPrompt(input: {
+  readonly recipients: ReadonlyArray<CommsActor>;
+  readonly messageType: CommsMessageTypeValue;
+  readonly body: string;
+}): string {
+  const recipientList = input.recipients.map((recipient) => `@${recipient.handle}`).join(", ");
+  return `T3 comms ${input.messageType} to ${recipientList}:\n\n${input.body}`;
+}
+
+const echoToSenderThread = (
+  context: OrchestrationCliContext,
+  input: {
+    readonly sender: CommsActor;
+    readonly recipients: ReadonlyArray<CommsActor>;
+    readonly messageType: CommsMessageTypeValue;
+    readonly body: string;
+  },
+) =>
+  Effect.gen(function* () {
+    if (
+      context.mode !== "live" ||
+      input.sender.kind !== "agent" ||
+      input.sender.threadId === null
+    ) {
+      return false;
+    }
+
+    const thread =
+      context.snapshot.threads.find((entry) => entry.id === input.sender.threadId) ?? null;
+    if (!thread || thread.deletedAt !== null || thread.archivedAt !== null) {
+      return false;
+    }
+
+    const createdAt = yield* nowIso;
+    yield* context.dispatch({
+      type: "thread.message.import",
+      commandId: newCommandId(),
+      threadId: input.sender.threadId,
+      message: {
+        messageId: newMessageId(),
+        role: "assistant",
+        text: senderEchoPrompt(input),
+        turnId: null,
+        createdAt,
+      },
+      createdAt,
+    });
+    return true;
+  });
+
 const deliverToThreads = (
   context: OrchestrationCliContext,
   input: {
@@ -318,6 +368,7 @@ const deliverToThreads = (
         delivered: 0,
         failed: 0,
         skipped: input.deliveries.length,
+        deliveredRecipientIds: [] as CommsActorId[],
       };
     }
 
@@ -325,6 +376,7 @@ const deliverToThreads = (
     let delivered = 0;
     let failed = 0;
     let skipped = 0;
+    const deliveredRecipientIds: CommsActorId[] = [];
 
     for (const delivery of input.deliveries) {
       const recipient = input.recipientsById.get(delivery.recipientActorId);
@@ -369,6 +421,7 @@ const deliverToThreads = (
 
       if (result._tag === "Success") {
         delivered += 1;
+        deliveredRecipientIds.push(delivery.recipientActorId);
         yield* context.commsRepository.setDeliveryStatus({
           deliveryId: delivery.deliveryId,
           status: "delivered",
@@ -383,7 +436,7 @@ const deliverToThreads = (
       }
     }
 
-    return { attempted, delivered, failed, skipped };
+    return { attempted, delivered, failed, skipped, deliveredRecipientIds };
   });
 
 const commsRegisterCommand = Command.make("register", {
@@ -517,7 +570,19 @@ const commsSendCommand = Command.make("send", {
               delivered: 0,
               failed: 0,
               skipped: sent.deliveries.length,
+              deliveredRecipientIds: [] as CommsActorId[],
             };
+        const deliveredRecipients = recipients.filter((recipient) =>
+          deliveryResult.deliveredRecipientIds.includes(recipient.actorId),
+        );
+        if (deliveredRecipients.length > 0) {
+          yield* echoToSenderThread(context, {
+            sender,
+            recipients: deliveredRecipients,
+            messageType: flags.type,
+            body: input.message,
+          });
+        }
 
         return [
           `Sent ${flags.type} message ${sent.message.messageId} to ${sent.deliveries.length} recipient(s).`,
