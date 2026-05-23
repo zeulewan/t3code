@@ -45,6 +45,18 @@ export function createThreadSelectorByRef(
   return createScopedThreadSelector(() => ref);
 }
 
+export function createThreadDetailLoadedSelectorByRef(
+  ref: ScopedThreadRef | null | undefined,
+): (state: AppState) => boolean {
+  return (state) => {
+    if (!ref) {
+      return false;
+    }
+    const environmentState = selectEnvironmentState(state, ref.environmentId);
+    return environmentState.threadDetailLoadedByThreadId[ref.threadId] === true;
+  };
+}
+
 export function createThreadSelectorAcrossEnvironments(
   threadId: ThreadId | null | undefined,
 ): (state: AppState) => Thread | undefined {

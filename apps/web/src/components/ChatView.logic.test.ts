@@ -368,6 +368,7 @@ function setStoreThreads(threads: ReadonlyArray<ReturnType<typeof makeThread>>) 
         },
       ]),
     ),
+    threadDetailLoadedByThreadId: Object.fromEntries(threads.map((thread) => [thread.id, true])),
     messageIdsByThreadId: Object.fromEntries(
       threads.map((thread) => [thread.id, thread.messages.map((message) => message.id)]),
     ),
