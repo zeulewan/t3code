@@ -25,7 +25,7 @@ import * as Path from "effect/Path";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 
 import { makeThreadCommsHandle } from "../commsHandles.ts";
-import { T3_THREAD_ID_ENV } from "../commsEnvironment.ts";
+import { readAutoCommsSenderEnv, T3_THREAD_ID_ENV } from "../commsEnvironment.ts";
 import {
   isSupportedProviderImageInputMimeType,
   supportedProviderImageInputMimeTypesLabel,
@@ -87,6 +87,10 @@ const attachFlag = Flag.string("attach").pipe(
     "File to attach. `agent send` accepts images; `agent post` accepts display/download attachments.",
   ),
   Flag.between(0, PROVIDER_SEND_TURN_MAX_ATTACHMENTS),
+);
+const developerOverrideFlag = Flag.boolean("developer-override").pipe(
+  Flag.withDescription("Required for developer-only agent send from inside another agent session."),
+  Flag.withDefault(false),
 );
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -211,10 +215,26 @@ function withAgentCommsInstructions(input: {
     `- Command template: ${commsSendInstruction({
       context: input.context,
     })}`,
-    `- The CLI autodetects you from ${T3_THREAD_ID_ENV}; if that fails, use the explicit form with your handle: comms send ${input.handle} <target-handle> '<message>'.`,
+    `- The CLI autodetects you from ${T3_THREAD_ID_ENV}; do not include your own handle as a sender argument.`,
+    `- If autodetect fails, run: comms register ${input.handle} --thread "$${T3_THREAD_ID_ENV}", then retry the same target-only send command.`,
     "- Handles are written without the @ in the command, for example: bob or joe.",
   ].join("\n");
 }
+
+const rejectAgentSendFromAgentSession = (developerOverride: boolean) =>
+  Effect.gen(function* () {
+    if (developerOverride) {
+      return;
+    }
+    const detected = readAutoCommsSenderEnv();
+    if (!detected.threadId && !detected.handle) {
+      return;
+    }
+    return yield* new OrchestrationCliError({
+      message:
+        "`agent send` injects a user-role turn and is developer-only from inside agent sessions. Use `comms send <target-handle> '<message>'` for agent-to-agent messages, or pass --developer-override if you intentionally need this developer override.",
+    });
+  });
 
 function withModelOverride(
   thread: OrchestrationThread,
@@ -454,12 +474,14 @@ const agentSendCommand = Command.make("send", {
   model: optionalModelFlag,
   effort: optionalEffortFlag,
   attach: attachFlag,
+  developerOverride: developerOverrideFlag,
 }).pipe(
   Command.withDescription("Send a user turn to an existing agent thread."),
   Command.withHandler((flags) =>
     runWithOrchestrationCli(flags, (context: OrchestrationCliContext) =>
       Effect.gen(function* () {
         yield* requireLiveServer(context.mode, "Agent send");
+        yield* rejectAgentSendFromAgentSession(flags.developerOverride);
         const thread = yield* resolveThread(context, flags.thread);
         const attachments = yield* readProviderImageAttachmentFiles(flags.attach);
         const createdAt = yield* nowIso;
