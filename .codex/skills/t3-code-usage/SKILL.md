@@ -54,7 +54,8 @@ List agents:
 node apps/server/src/bin.ts --log-level error agent list --project t3code --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
 ```
 
-Send to an existing agent by thread id, title, or comms handle:
+Developer/operator only: send a user-role turn to an existing agent by thread id, title, or comms handle.
+Agents should not use `agent send` to message each other; use `comms send` instead.
 
 ```sh
 node apps/server/src/bin.ts --log-level error agent send <thread-or-handle> '<message>' --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
@@ -67,6 +68,9 @@ node apps/server/src/bin.ts --log-level error agent send <thread-or-handle> '<me
 ```
 
 `agent send --attach` currently supports GIF, JPEG, PNG, and WebP images. Generic non-image files are not supported by this CLI/schema path yet.
+
+If `agent send` is intentionally run from inside an agent session, pass `--developer-override`.
+That flag is a developer override, not the normal agent-to-agent path.
 
 Post an assistant-authored message to a thread without starting a provider turn:
 
@@ -100,10 +104,18 @@ Send a direct interruptive message from inside an agent session:
 node apps/server/src/bin.ts --log-level error comms send <target-handle> '<message>' --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733 --type direct
 ```
 
-The sender is autodetected from `T3_THREAD_ID`, with `T3_COMMS_HANDLE` as a fallback. If you are outside an agent session, use the explicit form:
+The sender is autodetected from `T3_THREAD_ID`, with `T3_COMMS_HANDLE` as a fallback.
+Do not put the sender handle in the positional arguments.
+If autodetect fails inside an agent session, register the current thread and retry the same target-only command:
 
 ```sh
-node apps/server/src/bin.ts --log-level error comms send <from-handle> <target-handle> '<message>' --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733 --type direct
+node apps/server/src/bin.ts --log-level error comms register <your-handle> --thread "$T3_THREAD_ID" --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
+```
+
+Outside an agent session, the developer-only sender override requires a literal `--developer-override`:
+
+```sh
+node apps/server/src/bin.ts --log-level error comms send --from <sender-handle> --developer-override <target-handle> '<message>' --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733 --type direct
 ```
 
 Read inbox:

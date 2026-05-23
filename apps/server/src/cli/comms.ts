@@ -66,6 +66,16 @@ const noDeliverFlag = Flag.boolean("no-deliver").pipe(
   Flag.withDescription("Only write the inbox record; do not inject into live target threads."),
   Flag.withDefault(false),
 );
+const developerFromFlag = Flag.string("from").pipe(
+  Flag.withDescription(
+    "Developer-only sender override. Normal agent sessions should rely on autodetect.",
+  ),
+  Flag.optional,
+);
+const developerOverrideFlag = Flag.boolean("developer-override").pipe(
+  Flag.withDescription("Required for developer-only comms sender override operations."),
+  Flag.withDefault(false),
+);
 const statusFlag = Flag.choice("status", CommsDeliveryStatus.literals).pipe(
   Flag.withDescription("Optional delivery status filter."),
   Flag.optional,
@@ -178,40 +188,6 @@ function parseRecipientHandles(raw: string): ReadonlyArray<string> {
     .filter((entry) => entry.length > 0);
 }
 
-type CommsSendInput =
-  | {
-      readonly mode: "explicit";
-      readonly from: string;
-      readonly to: string;
-      readonly message: string;
-    }
-  | {
-      readonly mode: "autodetect";
-      readonly to: string;
-      readonly message: string;
-    };
-
-function parseCommsSendArgs(parts: ReadonlyArray<string>): CommsSendInput {
-  if (parts.length === 3) {
-    return {
-      mode: "explicit",
-      from: parts[0] ?? "",
-      to: parts[1] ?? "",
-      message: parts[2] ?? "",
-    };
-  }
-  if (parts.length === 2) {
-    return {
-      mode: "autodetect",
-      to: parts[0] ?? "",
-      message: parts[1] ?? "",
-    };
-  }
-  throw new OrchestrationCliError({
-    message: "Usage: comms send [from-handle] <target-handle> '<message>'.",
-  });
-}
-
 const getActorByThreadId = (context: OrchestrationCliContext, rawThreadId: string) =>
   Effect.gen(function* () {
     const threadId = ThreadId.make(rawThreadId.trim());
@@ -250,9 +226,24 @@ const detectSenderActor = (context: OrchestrationCliContext) =>
       return yield* getActorByHandle(context, detected.handle.replace(/^@/, ""));
     }
     return yield* new OrchestrationCliError({
-      message: `Cannot autodetect comms sender. Run this from an agent session with ${T3_THREAD_ID_ENV} set, set ${T3_COMMS_HANDLE_ENV}, or use the explicit form: comms send <from-handle> <target-handle> '<message>'.`,
+      message: `Cannot autodetect comms sender. Run this from an agent session with ${T3_THREAD_ID_ENV} set, set ${T3_COMMS_HANDLE_ENV}, or use the developer override: comms send --from <handle> --developer-override <target-handle> '<message>'.`,
     });
   });
+
+interface CommsSendInput {
+  readonly target: string;
+  readonly message: string;
+}
+
+function parseCommsSendArgs(parts: ReadonlyArray<string>): CommsSendInput | null {
+  if (parts.length === 2) {
+    return {
+      target: parts[0] ?? "",
+      message: parts[1] ?? "",
+    };
+  }
+  return null;
+}
 
 function formatActors(actors: ReadonlyArray<CommsActor>): string {
   if (actors.length === 0) return "No comms actors registered.";
@@ -501,10 +492,12 @@ const commsSendCommand = Command.make("send", {
   ...projectLocationFlags,
   args: Argument.string("args").pipe(
     Argument.withDescription(
-      "Either <target-handle> <message> with autodetected sender, or <from-handle> <target-handle> <message>.",
+      "<target-handle> <message>. Sender is autodetected from the current agent session.",
     ),
-    Argument.between(2, 3),
+    Argument.between(2, Number.MAX_SAFE_INTEGER),
   ),
+  from: developerFromFlag,
+  developerOverride: developerOverrideFlag,
   type: messageTypeFlag,
   noDeliver: noDeliverFlag,
 }).pipe(
@@ -513,12 +506,23 @@ const commsSendCommand = Command.make("send", {
     runWithOrchestrationCli(flags, (context: OrchestrationCliContext) =>
       Effect.gen(function* () {
         const input = parseCommsSendArgs(flags.args);
-        const sender =
-          input.mode === "explicit"
-            ? yield* getActorByHandle(context, input.from.replace(/^@/, ""))
-            : yield* detectSenderActor(context);
+        if (input === null) {
+          return yield* new OrchestrationCliError({
+            message:
+              "Usage: comms send <target-handle> '<message>'. Do not pass a positional sender; developer sender override requires --from <handle> --developer-override.",
+          });
+        }
+        if (Option.isSome(flags.from) && !flags.developerOverride) {
+          return yield* new OrchestrationCliError({
+            message:
+              "Developer sender override requires --developer-override. Normal agent usage is: comms send <target-handle> '<message>'.",
+          });
+        }
+        const sender = Option.isSome(flags.from)
+          ? yield* getActorByHandle(context, flags.from.value.replace(/^@/, ""))
+          : yield* detectSenderActor(context);
         yield* requireActiveActorThread(context, sender, "sender");
-        const recipientHandles = parseRecipientHandles(input.to);
+        const recipientHandles = parseRecipientHandles(input.target);
         if (recipientHandles.length === 0) {
           return yield* new OrchestrationCliError({
             message: "At least one recipient is required.",
