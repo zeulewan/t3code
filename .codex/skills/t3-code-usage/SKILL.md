@@ -1,6 +1,6 @@
 ---
 name: t3-code-usage
-description: Use this skill when working with T3 Code as a running tool, including T3 CLI commands, browser connection and pairing, agent spawning/sending, and inter-agent comms. This skill is for usage and operations only; do not use it as a repository development guide.
+description: "Use this skill when working with T3 Code as a running tool, including T3 CLI commands, browser connection and pairing, agent spawning/sending, and inter-agent comms. This skill is for usage and operations only; do not use it as a repository development guide."
 ---
 
 # T3 Code Usage
