@@ -11,6 +11,12 @@ T3 Code is a minimal web GUI for using coding agents like Codex and Claude.
 
 This repository is a VERY EARLY WIP. Proposing sweeping changes that improve long-term maintainability is encouraged.
 
+## T3 Usage Skill
+
+- The global Codex skill `t3-code-usage` is installed at `/home/zeul/.codex/skills/t3-code-usage/SKILL.md`.
+- Use it for operating T3 Code: CLI commands, browser connection/pairing, agent send/post with attachments, and inter-agent comms.
+- Do not treat it as a repository development guide; this `AGENTS.md` remains the source for repo coding and verification rules.
+
 ## Core Priorities
 
 1. Performance first.
