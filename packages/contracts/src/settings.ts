@@ -96,6 +96,7 @@ export const ChatHeaderVisibilitySettings = Schema.Struct({
 export type ChatHeaderVisibilitySettings = typeof ChatHeaderVisibilitySettings.Type;
 
 export const ClientSettingsSchema = Schema.Struct({
+  agentIdentityModeEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   autoOpenPlanSidebar: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   chatHeaderVisibility: ChatHeaderVisibilitySettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHAT_HEADER_VISIBILITY)),
@@ -538,6 +539,7 @@ export const ServerSettingsPatch = Schema.Struct({
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 
 export const ClientSettingsPatch = Schema.Struct({
+  agentIdentityModeEnabled: Schema.optionalKey(Schema.Boolean),
   autoOpenPlanSidebar: Schema.optionalKey(Schema.Boolean),
   chatHeaderVisibility: Schema.optionalKey(ChatHeaderVisibilitySettings),
   confirmThreadArchive: Schema.optionalKey(Schema.Boolean),

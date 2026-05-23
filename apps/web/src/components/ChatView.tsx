@@ -12,6 +12,7 @@ import {
   type ServerProvider,
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
+  type ThreadIdentity,
   type ThreadId,
   type TurnId,
   type KeybindingCommand,
@@ -34,6 +35,11 @@ import {
 } from "@t3tools/shared/model";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
+import {
+  buildAgentThreadTitle,
+  chooseNextThreadIdentity,
+  countProjectThreadsUsingIdentity,
+} from "@t3tools/shared/threadIdentity";
 import { Debouncer } from "@tanstack/react-pacer";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -76,6 +82,7 @@ import {
   type AppState,
   selectEnvironmentState,
   selectSidebarThreadSummaryByRef,
+  selectSidebarThreadsAcrossEnvironments,
   selectProjectsAcrossEnvironments,
   selectThreadsAcrossEnvironments,
   useStore,
@@ -702,6 +709,7 @@ export default function ChatView(props: ChatViewProps) {
   );
   const timestampFormat = settings.timestampFormat;
   const autoOpenPlanSidebar = settings.autoOpenPlanSidebar;
+  const agentIdentityModeEnabled = settings.agentIdentityModeEnabled;
   const navigate = useNavigate();
   const rawSearch = useSearch({
     strict: false,
@@ -821,6 +829,9 @@ export default function ChatView(props: ChatViewProps) {
       ),
     ),
   );
+  const sidebarThreads = useStore(
+    useShallow((state) => selectSidebarThreadsAcrossEnvironments(state)),
+  );
   const storeServerTerminalLaunchContext = useTerminalStateStore(
     (s) => s.terminalLaunchContextByThreadKey[scopedThreadKey(routeThreadRef)] ?? null,
   );
@@ -885,6 +896,52 @@ export default function ChatView(props: ChatViewProps) {
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
   const diffOpen = rawSearch.diff === "1";
   const activeThreadId = activeThread?.id ?? null;
+  const handleThreadIdentityChange = useCallback(
+    async (identity: ThreadIdentity) => {
+      if (isLocalDraftThread) {
+        setDraftThreadContext(composerDraftTarget, { identity });
+        return;
+      }
+
+      if (!isServerThread) {
+        return;
+      }
+
+      const api = readEnvironmentApi(environmentId);
+      if (!api) {
+        toastManager.add({
+          type: "error",
+          title: "Thread API unavailable.",
+        });
+        return;
+      }
+
+      try {
+        await api.orchestration.dispatchCommand({
+          type: "thread.meta.update",
+          commandId: newCommandId(),
+          threadId,
+          identity,
+        });
+      } catch (error) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Failed to update thread identity",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
+      }
+    },
+    [
+      composerDraftTarget,
+      environmentId,
+      isLocalDraftThread,
+      isServerThread,
+      setDraftThreadContext,
+      threadId,
+    ],
+  );
   const activeThreadRef = useMemo(
     () => (activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null),
     [activeThread],
@@ -2933,6 +2990,8 @@ export default function ChatView(props: ChatViewProps) {
         }
       }
       const title = truncate(titleSeed);
+      const useAgentIdentityTitle = agentIdentityModeEnabled && isLocalDraftThread;
+      const threadTitleForSend = useAgentIdentityTitle ? activeThread.title : title;
       const threadCreateModelSelection = createModelSelection(
         ctxSelectedModelSelection.instanceId,
         ctxSelectedModel || activeProject.defaultModelSelection?.model || DEFAULT_MODEL,
@@ -2973,7 +3032,8 @@ export default function ChatView(props: ChatViewProps) {
                 ? {
                     createThread: {
                       projectId: activeProject.id,
-                      title,
+                      title: threadTitleForSend,
+                      identity: activeThread.identity,
                       modelSelection: threadCreateModelSelection,
                       runtimeMode,
                       interactionMode,
@@ -3007,7 +3067,8 @@ export default function ChatView(props: ChatViewProps) {
           attachments: turnAttachments,
         },
         modelSelection: ctxSelectedModelSelection,
-        titleSeed: title,
+        titleSeed: threadTitleForSend,
+        ...(useAgentIdentityTitle ? { autoTitle: false } : {}),
         runtimeMode,
         interactionMode,
         ...(bootstrap ? { bootstrap } : {}),
@@ -3411,7 +3472,29 @@ export default function ChatView(props: ChatViewProps) {
       effort: ctxSelectedPromptEffort,
       text: implementationPrompt,
     });
-    const nextThreadTitle = truncate(buildPlanImplementationThreadTitle(planMarkdown));
+    const identityCandidates = [
+      ...sidebarThreads.filter(
+        (thread) =>
+          thread.environmentId === activeThread.environmentId &&
+          thread.projectId === activeProject.id,
+      ),
+      ...Object.values(draftThreadsByThreadKey).filter(
+        (thread) =>
+          thread.environmentId === activeThread.environmentId &&
+          thread.projectId === activeProject.id,
+      ),
+    ];
+    const nextThreadIdentity = chooseNextThreadIdentity(activeProject.id, identityCandidates);
+    const nextThreadTitle = agentIdentityModeEnabled
+      ? buildAgentThreadTitle({
+          identity: nextThreadIdentity,
+          existingSamePresetCount: countProjectThreadsUsingIdentity({
+            projectId: activeProject.id,
+            identity: nextThreadIdentity,
+            threads: identityCandidates,
+          }),
+        })
+      : truncate(buildPlanImplementationThreadTitle(planMarkdown));
     const nextThreadModelSelection: ModelSelection = ctxSelectedModelSelection;
 
     sendInFlightRef.current = true;
@@ -3428,6 +3511,7 @@ export default function ChatView(props: ChatViewProps) {
         threadId: nextThreadId,
         projectId: activeProject.id,
         title: nextThreadTitle,
+        identity: nextThreadIdentity,
         modelSelection: nextThreadModelSelection,
         runtimeMode,
         interactionMode: "default",
@@ -3448,6 +3532,7 @@ export default function ChatView(props: ChatViewProps) {
           },
           modelSelection: ctxSelectedModelSelection,
           titleSeed: nextThreadTitle,
+          ...(agentIdentityModeEnabled ? { autoTitle: false } : {}),
           runtimeMode,
           interactionMode: "default",
           sourceProposedPlan: {
@@ -3496,7 +3581,9 @@ export default function ChatView(props: ChatViewProps) {
     activeProposedPlan,
     activeThreadBranch,
     activeThread,
+    agentIdentityModeEnabled,
     beginLocalDispatch,
+    draftThreadsByThreadKey,
     activeEnvironmentUnavailable,
     isConnecting,
     isSendBusy,
@@ -3504,6 +3591,7 @@ export default function ChatView(props: ChatViewProps) {
     navigate,
     resetLocalDispatch,
     runtimeMode,
+    sidebarThreads,
     autoOpenPlanSidebar,
     environmentId,
   ]);
@@ -3717,6 +3805,8 @@ export default function ChatView(props: ChatViewProps) {
           activeThreadId={activeThread.id}
           {...(routeKind === "draft" && draftId ? { draftId } : {})}
           activeThreadTitle={activeThread.title}
+          activeThreadIdentity={activeThread.identity}
+          agentIdentityModeEnabled={agentIdentityModeEnabled}
           activeThreadBranch={activeThreadBranch}
           activeThreadWorktreePath={activeThread.worktreePath}
           activeProjectName={activeProject?.name}
@@ -3739,6 +3829,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddProjectScript={saveProjectScript}
           onUpdateProjectScript={updateProjectScript}
           onDeleteProjectScript={deleteProjectScript}
+          onThreadIdentityChange={handleThreadIdentityChange}
           onToggleTerminal={toggleTerminalVisibility}
           onToggleDiff={onToggleDiff}
         />

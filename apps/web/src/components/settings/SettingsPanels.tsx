@@ -514,6 +514,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.autoOpenPlanSidebar !== DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar
         ? ["Auto-open task panel"]
         : []),
+      ...(settings.agentIdentityModeEnabled !== DEFAULT_UNIFIED_SETTINGS.agentIdentityModeEnabled
+        ? ["Icon/color agent mode"]
+        : []),
       ...(settings.enableAssistantStreaming !== DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming
         ? ["Assistant output"]
         : []),
@@ -539,6 +542,7 @@ export function useSettingsRestore(onRestored?: () => void) {
     [
       isChatHeaderVisibilityDirty,
       isGitWritingModelDirty,
+      settings.agentIdentityModeEnabled,
       settings.autoOpenPlanSidebar,
       settings.confirmThreadArchive,
       settings.confirmThreadDelete,
@@ -573,6 +577,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       autoOpenPlanSidebar: DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar,
+      agentIdentityModeEnabled: DEFAULT_UNIFIED_SETTINGS.agentIdentityModeEnabled,
       enableAssistantStreaming: DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming,
       automaticGitFetchInterval: DEFAULT_UNIFIED_SETTINGS.automaticGitFetchInterval,
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
@@ -905,6 +910,33 @@ export function GeneralSettingsPanel() {
                 updateSettings({ autoOpenPlanSidebar: Boolean(checked) })
               }
               aria-label="Open the task panel automatically"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Icon/color agent mode"
+          description="Show thread identities and name newly created sessions from the agent palette."
+          resetAction={
+            settings.agentIdentityModeEnabled !==
+            DEFAULT_UNIFIED_SETTINGS.agentIdentityModeEnabled ? (
+              <SettingResetButton
+                label="icon/color agent mode"
+                onClick={() =>
+                  updateSettings({
+                    agentIdentityModeEnabled: DEFAULT_UNIFIED_SETTINGS.agentIdentityModeEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.agentIdentityModeEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ agentIdentityModeEnabled: Boolean(checked) })
+              }
+              aria-label="Enable icon/color agent mode"
             />
           }
         />

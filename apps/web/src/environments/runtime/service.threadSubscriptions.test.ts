@@ -1,5 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import {
+  DEFAULT_THREAD_IDENTITY,
   EnvironmentId,
   ProjectId,
   ProviderInstanceId,
@@ -104,6 +105,7 @@ function makeThreadShellSnapshot(params: {
         id: params.threadId,
         projectId,
         title: "Thread",
+        identity: DEFAULT_THREAD_IDENTITY,
         modelSelection: {
           instanceId: ProviderInstanceId.make("codex"),
           model: "gpt-5-codex",

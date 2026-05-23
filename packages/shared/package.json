@@ -90,6 +90,10 @@
     "./keybindings": {
       "types": "./src/keybindings.ts",
       "import": "./src/keybindings.ts"
+    },
+    "./threadIdentity": {
+      "types": "./src/threadIdentity.ts",
+      "import": "./src/threadIdentity.ts"
     }
   },
   "scripts": {
