@@ -68,7 +68,7 @@ const noDeliverFlag = Flag.boolean("no-deliver").pipe(
 );
 const developerFromFlag = Flag.string("from").pipe(
   Flag.withDescription(
-    "Developer-only sender override. Normal agent sessions should rely on autodetect.",
+    "Developer-only sender override. Normal agent-to-agent comms must rely on autodetect.",
   ),
   Flag.optional,
 );
@@ -490,9 +490,9 @@ const commsActorsCommand = Command.make("actors", {
 
 const commsSendCommand = Command.make("send", {
   ...projectLocationFlags,
-  args: Argument.string("args").pipe(
+  args: Argument.string("target-message").pipe(
     Argument.withDescription(
-      "<target-handle> <message>. Sender is autodetected from the current agent session.",
+      "<target-handle> <message>. Do not include a sender; use --from <handle> --developer-override only for developer overrides.",
     ),
     Argument.between(2, Number.MAX_SAFE_INTEGER),
   ),
