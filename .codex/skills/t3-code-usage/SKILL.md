@@ -46,6 +46,20 @@ curl -i -sS https://workstation.tailee9084.ts.net:13773/.well-known/t3/environme
 
 If reconnect logs show repeated `Invalid session token signature`, the browser is carrying a stale `t3_session` cookie. A healthy server should clear that cookie from `/api/auth/session` and then require pairing again.
 
+## Project CLI
+
+Rename only changes a project's display title:
+
+```sh
+node apps/server/src/bin.ts --log-level error project rename <project-id-title-or-workspace-root> '<new-title>' --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
+```
+
+If an agent fails because the project folder moved or was renamed on disk, relocate the project workspace root instead of creating an empty replacement directory:
+
+```sh
+node apps/server/src/bin.ts --log-level error project relocate <project-id-title-or-workspace-root> /path/to/existing/workspace --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
+```
+
 ## Agent CLI
 
 List agents:
@@ -160,7 +174,7 @@ If direct delivery fails with `requires a running T3 server`, either start/resta
 
 If sending fails because an actor has a missing, deleted, archived, or inactive backing thread, re-register the handle to a healthy active thread before using `direct` or `notify`.
 
-If a recipient is not responding but delivery says it succeeded, inspect provider logs for runtime errors. Comms delivery and model runtime health are separate.
+If a recipient is not responding but delivery says it succeeded, inspect provider logs for runtime errors. Comms delivery and model runtime health are separate. A successful comms delivery only proves T3 stored/injected the message; the only valid proof that the recipient model is alive is an actual response from that model.
 
 ## Log Reading
 
