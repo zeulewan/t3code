@@ -1,4 +1,9 @@
-import { ProjectId, ThreadId, ProviderInstanceId } from "@t3tools/contracts";
+import {
+  DEFAULT_THREAD_IDENTITY,
+  ProjectId,
+  ThreadId,
+  ProviderInstanceId,
+} from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -79,6 +84,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         threadId: ThreadId.make("thread-null-options"),
         projectId: ProjectId.make("project-null-options"),
         title: "Null options thread",
+        identity: DEFAULT_THREAD_IDENTITY,
         modelSelection: {
           instanceId: ProviderInstanceId.make("claudeAgent"),
           model: "claude-opus-4-6",

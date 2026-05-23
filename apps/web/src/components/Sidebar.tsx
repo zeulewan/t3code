@@ -46,6 +46,7 @@ import {
   type ScopedThreadRef,
   type ResolvedKeybindingsConfig,
   type SidebarProjectGroupingMode,
+  type ThreadIdentity,
   ThreadId,
 } from "@t3tools/contracts";
 import {
@@ -211,6 +212,8 @@ import {
   selectProjectGroupingSettings,
 } from "../logicalProject";
 import type { SidebarThreadSummary } from "../types";
+import { ThreadIdentityAvatar } from "./ThreadIdentityAvatar";
+import { ThreadIdentityPickerDialog } from "./ThreadIdentityPickerDialog";
 import {
   buildPhysicalToLogicalProjectKeyMap,
   buildSidebarProjectSnapshots,
@@ -321,6 +324,7 @@ interface SidebarThreadRowProps {
   isActive: boolean;
   jumpLabel: string | null;
   appSettingsConfirmThreadArchive: boolean;
+  agentIdentityModeEnabled: boolean;
   renamingThreadKey: string | null;
   renamingTitle: string;
   setRenamingTitle: (title: string) => void;
@@ -358,6 +362,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
     isActive,
     jumpLabel,
     appSettingsConfirmThreadArchive,
+    agentIdentityModeEnabled,
     renamingThreadKey,
     renamingTitle,
     setRenamingTitle,
@@ -682,6 +687,9 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         {...threadLongPressMenuHandlers}
       >
         <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+          {agentIdentityModeEnabled ? (
+            <ThreadIdentityAvatar identity={thread.identity} size="xs" />
+          ) : null}
           {prStatus && (
             <Tooltip>
               <TooltipTrigger
@@ -890,6 +898,7 @@ interface SidebarProjectThreadListProps {
   activeRouteThreadKey: string | null;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
   appSettingsConfirmThreadArchive: boolean;
+  agentIdentityModeEnabled: boolean;
   renamingThreadKey: string | null;
   renamingTitle: string;
   setRenamingTitle: (title: string) => void;
@@ -941,6 +950,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     activeRouteThreadKey,
     threadJumpLabelByKey,
     appSettingsConfirmThreadArchive,
+    agentIdentityModeEnabled,
     renamingThreadKey,
     renamingTitle,
     setRenamingTitle,
@@ -993,6 +1003,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
               isActive={activeRouteThreadKey === threadKey}
               jumpLabel={threadJumpLabelByKey.get(threadKey) ?? null}
               appSettingsConfirmThreadArchive={appSettingsConfirmThreadArchive}
+              agentIdentityModeEnabled={agentIdentityModeEnabled}
               renamingThreadKey={renamingThreadKey}
               renamingTitle={renamingTitle}
               setRenamingTitle={setRenamingTitle}
@@ -1099,6 +1110,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const appSettingsConfirmThreadArchive = useClientSettings<boolean>(
     (settings) => settings.confirmThreadArchive,
   );
+  const agentIdentityModeEnabled = useClientSettings<boolean>(
+    (settings) => settings.agentIdentityModeEnabled,
+  );
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const serverConfigs = useServerConfigs();
   const deleteProject = useAtomCommand(projectEnvironment.delete, {
@@ -1175,11 +1189,20 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       ),
     [sidebarThreads],
   );
+  const [identityPickerThreadRef, setIdentityPickerThreadRef] = useState<ScopedThreadRef | null>(
+    null,
+  );
   // Keep a ref so callbacks can read the latest map without appearing in
   // dependency arrays (avoids invalidating every thread-row memo on each
   // thread-list change).
   const sidebarThreadByKeyRef = useRef(sidebarThreadByKey);
   sidebarThreadByKeyRef.current = sidebarThreadByKey;
+  const identityPickerThreadKey = identityPickerThreadRef
+    ? scopedThreadKey(identityPickerThreadRef)
+    : null;
+  const identityPickerThread = identityPickerThreadKey
+    ? (sidebarThreadByKey.get(identityPickerThreadKey) ?? null)
+    : null;
   const projectThreads = sidebarThreads;
   const projectPreferenceKeys = useMemo(() => projectExpansionPreferenceKeys(project), [project]);
   const projectExpanded = useUiStateStore((state) =>
@@ -2077,6 +2100,33 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     [updateThreadMetadata],
   );
 
+  const handleThreadIdentitySelect = useCallback(
+    async (identity: ThreadIdentity) => {
+      if (!identityPickerThreadRef) {
+        return;
+      }
+
+      const result = await updateThreadMetadata({
+        environmentId: identityPickerThreadRef.environmentId,
+        input: {
+          threadId: identityPickerThreadRef.threadId,
+          identity,
+        },
+      });
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Failed to update thread identity",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
+      }
+    },
+    [identityPickerThreadRef, updateThreadMetadata],
+  );
+
   const closeProjectRenameDialog = useCallback(() => {
     setProjectRenameTarget(null);
     setProjectRenameTitle("");
@@ -2168,6 +2218,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       const clicked = await api.contextMenu.show(
         [
           { id: "rename", label: "Rename thread" },
+          ...(agentIdentityModeEnabled
+            ? [{ id: "change-identity", label: "Change mnemonic" }]
+            : []),
           { id: "mark-unread", label: "Mark unread" },
           { id: "copy-path", label: "Copy Path" },
           { id: "copy-thread-id", label: "Copy Thread ID" },
@@ -2178,6 +2231,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
       if (clicked === "rename") {
         startThreadRename(threadKey, thread.title);
+        return;
+      }
+
+      if (clicked === "change-identity") {
+        setIdentityPickerThreadRef(threadRef);
         return;
       }
 
@@ -2228,6 +2286,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       }
     },
     [
+      agentIdentityModeEnabled,
       appSettingsConfirmThreadDelete,
       copyPathToClipboard,
       copyThreadIdToClipboard,
@@ -2356,6 +2415,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         activeRouteThreadKey={activeRouteThreadKey}
         threadJumpLabelByKey={threadJumpLabelByKey}
         appSettingsConfirmThreadArchive={appSettingsConfirmThreadArchive}
+        agentIdentityModeEnabled={agentIdentityModeEnabled}
         renamingThreadKey={renamingThreadKey}
         renamingTitle={renamingTitle}
         setRenamingTitle={setRenamingTitle}
@@ -2377,6 +2437,18 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         openPrLink={openPrLink}
         expandThreadListForProject={expandThreadListForProject}
         collapseThreadListForProject={collapseThreadListForProject}
+      />
+
+      <ThreadIdentityPickerDialog
+        open={agentIdentityModeEnabled && identityPickerThread !== null}
+        value={identityPickerThread?.identity ?? null}
+        title="Change mnemonic"
+        onOpenChange={(open) => {
+          if (!open) {
+            setIdentityPickerThreadRef(null);
+          }
+        }}
+        onSelect={handleThreadIdentitySelect}
       />
 
       <Dialog

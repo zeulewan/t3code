@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   DEFAULT_RUNTIME_MODE,
+  DEFAULT_THREAD_IDENTITY,
   EnvironmentId,
   ProjectId,
   ProviderInstanceId,
@@ -34,6 +35,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     checkpoints: [],
     activities: [],
     ...overrides,
+    identity: overrides.identity ?? DEFAULT_THREAD_IDENTITY,
   };
 }
 

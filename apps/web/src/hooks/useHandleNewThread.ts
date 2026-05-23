@@ -8,6 +8,11 @@ import {
   DEFAULT_SERVER_SETTINGS,
   type ScopedProjectRef,
 } from "@t3tools/contracts";
+import {
+  buildAgentThreadTitle,
+  chooseNextThreadIdentity,
+  countProjectThreadsUsingIdentity,
+} from "@t3tools/shared/threadIdentity";
 import { useParams, useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
 import {
@@ -23,7 +28,13 @@ import {
   getProjectOrderKey,
   selectProjectGroupingSettings,
 } from "../logicalProject";
-import { readThreadShell, useProjects, useServerConfigs, useThread } from "../state/entities";
+import {
+  readThreadShell,
+  useProjects,
+  useServerConfigs,
+  useThread,
+  useThreadShells,
+} from "../state/entities";
 import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
@@ -32,7 +43,11 @@ import { useClientSettings } from "./useSettings";
 export function useNewThreadHandler() {
   const projects = useProjects();
   const serverConfigs = useServerConfigs();
+  const sidebarThreads = useThreadShells();
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
+  const agentIdentityModeEnabled = useClientSettings(
+    (settings) => settings.agentIdentityModeEnabled,
+  );
   const router = useRouter();
   const getCurrentRouteTarget = useCallback(() => {
     const currentRouteParams = router.state.matches[router.state.matches.length - 1]?.params ?? {};
@@ -57,6 +72,7 @@ export function useNewThreadHandler() {
         setDraftThreadContext,
         setLogicalProjectDraftThreadId,
       } = useComposerDraftStore.getState();
+      const draftThreads = Object.values(useComposerDraftStore.getState().draftThreadsByThreadKey);
       const currentRouteTarget = getCurrentRouteTarget();
       const project = projects.find(
         (candidate) =>
@@ -160,9 +176,34 @@ export function useNewThreadHandler() {
       const threadId = newThreadId();
       const createdAt = new Date().toISOString();
       const initialEnvMode = options?.envMode ?? environmentSettings.defaultThreadEnvMode;
+      const identityCandidates = [
+        ...sidebarThreads.filter(
+          (thread) =>
+            thread.environmentId === projectRef.environmentId &&
+            thread.projectId === projectRef.projectId,
+        ),
+        ...draftThreads.filter(
+          (thread) =>
+            thread.environmentId === projectRef.environmentId &&
+            thread.projectId === projectRef.projectId,
+        ),
+      ];
+      const identity = chooseNextThreadIdentity(projectRef.projectId, identityCandidates);
+      const title = agentIdentityModeEnabled
+        ? buildAgentThreadTitle({
+            identity,
+            existingSamePresetCount: countProjectThreadsUsingIdentity({
+              projectId: projectRef.projectId,
+              identity,
+              threads: identityCandidates,
+            }),
+        })
+        : "New thread";
       return (async () => {
         setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
           threadId,
+          title,
+          identity,
           createdAt,
           branch: options?.branch ?? null,
           worktreePath: options?.worktreePath ?? null,
@@ -183,7 +224,15 @@ export function useNewThreadHandler() {
         });
       })();
     },
-    [getCurrentRouteTarget, projectGroupingSettings, projects, router, serverConfigs],
+    [
+      agentIdentityModeEnabled,
+      getCurrentRouteTarget,
+      projectGroupingSettings,
+      projects,
+      router,
+      serverConfigs,
+      sidebarThreads,
+    ],
   );
 }
 

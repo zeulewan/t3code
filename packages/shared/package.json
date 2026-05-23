@@ -170,6 +170,10 @@
     "./hostProcess": {
       "types": "./src/hostProcess.ts",
       "import": "./src/hostProcess.ts"
+    },
+    "./threadIdentity": {
+      "types": "./src/threadIdentity.ts",
+      "import": "./src/threadIdentity.ts"
     }
   },
   "scripts": {

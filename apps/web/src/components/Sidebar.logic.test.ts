@@ -22,6 +22,7 @@ import {
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
 } from "./Sidebar.logic";
 import {
+  DEFAULT_THREAD_IDENTITY,
   EnvironmentId,
   OrchestrationLatestTurn,
   ProjectId,
@@ -838,6 +839,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     checkpoints: [],
     activities: [],
     ...overrides,
+    identity: overrides.identity ?? DEFAULT_THREAD_IDENTITY,
   };
 }
 

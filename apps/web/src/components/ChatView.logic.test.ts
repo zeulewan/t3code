@@ -1,4 +1,11 @@
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
+import {
+  DEFAULT_THREAD_IDENTITY,
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  TurnId,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { Thread } from "../types";
@@ -29,6 +36,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     environmentId,
     projectId,
     title: "Thread",
+    identity: overrides.identity ?? DEFAULT_THREAD_IDENTITY,
     modelSelection: {
       instanceId: ProviderInstanceId.make("codex"),
       model: "gpt-5.4",

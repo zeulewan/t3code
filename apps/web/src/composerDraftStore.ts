@@ -1,6 +1,7 @@
 import {
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
+  DEFAULT_THREAD_IDENTITY,
   defaultInstanceIdForDriver,
   type EnvironmentId,
   ModelSelection,
@@ -15,6 +16,7 @@ import {
   type ServerProvider,
   type ScopedProjectRef,
   type ScopedThreadRef,
+  ThreadIdentity,
   ThreadId,
 } from "@t3tools/contracts";
 import {
@@ -57,7 +59,7 @@ const isProviderDriverKind = Schema.is(ProviderDriverKind);
 const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
 
 export const COMPOSER_DRAFT_STORAGE_KEY = "t3code:composer-drafts:v1";
-const COMPOSER_DRAFT_STORAGE_VERSION = 8;
+const COMPOSER_DRAFT_STORAGE_VERSION = 9;
 const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
 export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
 
@@ -209,6 +211,8 @@ const PersistedDraftThreadState = Schema.Struct({
   environmentId: Schema.String,
   projectId: ProjectId,
   logicalProjectKey: Schema.optionalKey(Schema.String),
+  title: Schema.optionalKey(Schema.String),
+  identity: Schema.optionalKey(ThreadIdentity),
   createdAt: Schema.String,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
@@ -288,6 +292,8 @@ export interface DraftSessionState {
   environmentId: EnvironmentId;
   projectId: ProjectId;
   logicalProjectKey: string;
+  title: string;
+  identity: ThreadIdentity;
   createdAt: string;
   runtimeMode: RuntimeMode;
   interactionMode: ProviderInteractionMode;
@@ -352,6 +358,7 @@ interface ComposerDraftStoreState {
     draftId: DraftId,
     options?: {
       threadId?: ThreadId;
+      title?: string;
       branch?: string | null;
       worktreePath?: string | null;
       createdAt?: string;
@@ -359,6 +366,7 @@ interface ComposerDraftStoreState {
       startFromOrigin?: boolean;
       runtimeMode?: RuntimeMode;
       interactionMode?: ProviderInteractionMode;
+      identity?: ThreadIdentity;
     },
   ) => void;
   /** Creates or updates the draft session tracked for a concrete project ref. */
@@ -367,6 +375,7 @@ interface ComposerDraftStoreState {
     draftId: DraftId,
     options?: {
       threadId?: ThreadId;
+      title?: string;
       branch?: string | null;
       worktreePath?: string | null;
       createdAt?: string;
@@ -374,6 +383,7 @@ interface ComposerDraftStoreState {
       startFromOrigin?: boolean;
       runtimeMode?: RuntimeMode;
       interactionMode?: ProviderInteractionMode;
+      identity?: ThreadIdentity;
     },
   ) => void;
   /** Updates mutable draft-session metadata without touching composer content. */
@@ -383,11 +393,13 @@ interface ComposerDraftStoreState {
       branch?: string | null;
       worktreePath?: string | null;
       projectRef?: ScopedProjectRef;
+      title?: string;
       createdAt?: string;
       envMode?: DraftThreadEnvMode;
       startFromOrigin?: boolean;
       runtimeMode?: RuntimeMode;
       interactionMode?: ProviderInteractionMode;
+      identity?: ThreadIdentity;
     },
   ) => void;
   clearProjectDraftThreadId: (projectRef: ScopedProjectRef) => void;
@@ -1315,6 +1327,7 @@ function createDraftThreadState(
   existingThread: DraftThreadState | undefined,
   options?: {
     threadId?: ThreadId;
+    title?: string;
     branch?: string | null;
     worktreePath?: string | null;
     createdAt?: string;
@@ -1322,6 +1335,7 @@ function createDraftThreadState(
     startFromOrigin?: boolean;
     runtimeMode?: RuntimeMode;
     interactionMode?: ProviderInteractionMode;
+    identity?: ThreadIdentity;
   },
 ): DraftThreadState {
   const projectChanged =
@@ -1351,6 +1365,8 @@ function createDraftThreadState(
     environmentId: projectRef.environmentId,
     projectId: projectRef.projectId,
     logicalProjectKey,
+    title: options?.title ?? existingThread?.title ?? "New thread",
+    identity: options?.identity ?? existingThread?.identity ?? DEFAULT_THREAD_IDENTITY,
     createdAt: options?.createdAt ?? existingThread?.createdAt ?? new Date().toISOString(),
     runtimeMode: options?.runtimeMode ?? existingThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
     interactionMode:
@@ -1390,6 +1406,11 @@ function draftThreadsEqual(left: DraftThreadState | undefined, right: DraftThrea
     left.environmentId === right.environmentId &&
     left.projectId === right.projectId &&
     left.logicalProjectKey === right.logicalProjectKey &&
+    left.title === right.title &&
+    left.identity.preset === right.identity.preset &&
+    left.identity.name === right.identity.name &&
+    left.identity.icon === right.identity.icon &&
+    left.identity.color === right.identity.color &&
     left.createdAt === right.createdAt &&
     left.runtimeMode === right.runtimeMode &&
     left.interactionMode === right.interactionMode &&
@@ -2150,6 +2171,8 @@ function toHydratedDraftThreadState(
           persistedDraftThread.projectId,
         ),
       ),
+    title: persistedDraftThread.title ?? "New thread",
+    identity: persistedDraftThread.identity ?? DEFAULT_THREAD_IDENTITY,
     createdAt: persistedDraftThread.createdAt,
     runtimeMode: persistedDraftThread.runtimeMode,
     interactionMode: persistedDraftThread.interactionMode,
@@ -2353,6 +2376,8 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               environmentId: nextProjectRef.environmentId,
               projectId: nextProjectRef.projectId,
               logicalProjectKey: existing.logicalProjectKey,
+              title: options.title ?? existing.title,
+              identity: options.identity ?? existing.identity,
               createdAt:
                 options.createdAt === undefined
                   ? existing.createdAt
@@ -2375,6 +2400,11 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               nextDraftThread.environmentId === existing.environmentId &&
               nextDraftThread.projectId === existing.projectId &&
               nextDraftThread.logicalProjectKey === existing.logicalProjectKey &&
+              nextDraftThread.title === existing.title &&
+              nextDraftThread.identity.preset === existing.identity.preset &&
+              nextDraftThread.identity.name === existing.identity.name &&
+              nextDraftThread.identity.icon === existing.identity.icon &&
+              nextDraftThread.identity.color === existing.identity.color &&
               nextDraftThread.createdAt === existing.createdAt &&
               nextDraftThread.runtimeMode === existing.runtimeMode &&
               nextDraftThread.interactionMode === existing.interactionMode &&

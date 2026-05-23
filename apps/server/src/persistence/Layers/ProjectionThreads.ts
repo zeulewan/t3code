@@ -2,8 +2,8 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import * as Struct from "effect/Struct";
 
 import { toPersistenceSqlError } from "../Errors.ts";
 import {
@@ -14,14 +14,66 @@ import {
   ProjectionThreadRepository,
   type ProjectionThreadRepositoryShape,
 } from "../Services/ProjectionThreads.ts";
-import { ModelSelection } from "@t3tools/contracts";
+import {
+  ModelSelection,
+  ThreadIdentityColor,
+  ThreadIdentityIcon,
+  ThreadIdentityPreset,
+} from "@t3tools/contracts";
+import { getThreadIdentityPreset } from "@t3tools/shared/threadIdentity";
 
-const ProjectionThreadDbRow = ProjectionThread.mapFields(
-  Struct.assign({
-    modelSelection: Schema.fromJsonString(ModelSelection),
-  }),
-);
+const ProjectionThreadDbRow = Schema.Struct({
+  threadId: ProjectionThread.fields.threadId,
+  projectId: ProjectionThread.fields.projectId,
+  title: ProjectionThread.fields.title,
+  identityPreset: ThreadIdentityPreset,
+  identityIcon: ThreadIdentityIcon,
+  identityColor: ThreadIdentityColor,
+  modelSelection: Schema.fromJsonString(ModelSelection),
+  runtimeMode: ProjectionThread.fields.runtimeMode,
+  interactionMode: ProjectionThread.fields.interactionMode,
+  branch: ProjectionThread.fields.branch,
+  worktreePath: ProjectionThread.fields.worktreePath,
+  latestTurnId: ProjectionThread.fields.latestTurnId,
+  createdAt: ProjectionThread.fields.createdAt,
+  updatedAt: ProjectionThread.fields.updatedAt,
+  archivedAt: ProjectionThread.fields.archivedAt,
+  latestUserMessageAt: ProjectionThread.fields.latestUserMessageAt,
+  pendingApprovalCount: ProjectionThread.fields.pendingApprovalCount,
+  pendingUserInputCount: ProjectionThread.fields.pendingUserInputCount,
+  hasActionableProposedPlan: ProjectionThread.fields.hasActionableProposedPlan,
+  deletedAt: ProjectionThread.fields.deletedAt,
+});
 type ProjectionThreadDbRow = typeof ProjectionThreadDbRow.Type;
+
+function toProjectionThread(row: ProjectionThreadDbRow): ProjectionThread {
+  const preset = getThreadIdentityPreset(row.identityPreset);
+  return {
+    threadId: row.threadId,
+    projectId: row.projectId,
+    title: row.title,
+    identity: {
+      preset: row.identityPreset,
+      name: preset.name,
+      icon: row.identityIcon,
+      color: row.identityColor,
+    },
+    modelSelection: row.modelSelection,
+    runtimeMode: row.runtimeMode,
+    interactionMode: row.interactionMode,
+    branch: row.branch,
+    worktreePath: row.worktreePath,
+    latestTurnId: row.latestTurnId,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    archivedAt: row.archivedAt,
+    latestUserMessageAt: row.latestUserMessageAt,
+    pendingApprovalCount: row.pendingApprovalCount,
+    pendingUserInputCount: row.pendingUserInputCount,
+    hasActionableProposedPlan: row.hasActionableProposedPlan,
+    deletedAt: row.deletedAt,
+  };
+}
 
 const makeProjectionThreadRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -34,6 +86,9 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           thread_id,
           project_id,
           title,
+          identity_preset,
+          identity_icon,
+          identity_color,
           model_selection_json,
           runtime_mode,
           interaction_mode,
@@ -53,6 +108,9 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           ${row.threadId},
           ${row.projectId},
           ${row.title},
+          ${row.identity.preset},
+          ${row.identity.icon},
+          ${row.identity.color},
           ${JSON.stringify(row.modelSelection)},
           ${row.runtimeMode},
           ${row.interactionMode},
@@ -72,6 +130,9 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
         DO UPDATE SET
           project_id = excluded.project_id,
           title = excluded.title,
+          identity_preset = excluded.identity_preset,
+          identity_icon = excluded.identity_icon,
+          identity_color = excluded.identity_color,
           model_selection_json = excluded.model_selection_json,
           runtime_mode = excluded.runtime_mode,
           interaction_mode = excluded.interaction_mode,
@@ -98,6 +159,9 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           thread_id AS "threadId",
           project_id AS "projectId",
           title,
+          identity_preset AS "identityPreset",
+          identity_icon AS "identityIcon",
+          identity_color AS "identityColor",
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
           interaction_mode AS "interactionMode",
@@ -126,6 +190,9 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           thread_id AS "threadId",
           project_id AS "projectId",
           title,
+          identity_preset AS "identityPreset",
+          identity_icon AS "identityIcon",
+          identity_color AS "identityColor",
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
           interaction_mode AS "interactionMode",
@@ -162,11 +229,13 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
 
   const getById: ProjectionThreadRepositoryShape["getById"] = (input) =>
     getProjectionThreadRow(input).pipe(
+      Effect.map((row) => Option.map(row, toProjectionThread)),
       Effect.mapError(toPersistenceSqlError("ProjectionThreadRepository.getById:query")),
     );
 
   const listByProjectId: ProjectionThreadRepositoryShape["listByProjectId"] = (input) =>
     listProjectionThreadRows(input).pipe(
+      Effect.map((rows) => rows.map(toProjectionThread)),
       Effect.mapError(toPersistenceSqlError("ProjectionThreadRepository.listByProjectId:query")),
     );
 

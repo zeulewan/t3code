@@ -3,6 +3,7 @@ import {
   MessageId,
   CommandId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
+  DEFAULT_THREAD_IDENTITY,
   ProjectId,
   ThreadId,
   type OrchestrationCommand,
@@ -57,6 +58,7 @@ const readModel: OrchestrationReadModel = {
       id: ThreadId.make("thread-1"),
       projectId: ProjectId.make("project-a"),
       title: "Thread A",
+      identity: DEFAULT_THREAD_IDENTITY,
       modelSelection: {
         instanceId: ProviderInstanceId.make("codex"),
         model: "gpt-5-codex",
@@ -80,6 +82,7 @@ const readModel: OrchestrationReadModel = {
       id: ThreadId.make("thread-2"),
       projectId: ProjectId.make("project-b"),
       title: "Thread B",
+      identity: DEFAULT_THREAD_IDENTITY,
       modelSelection: {
         instanceId: ProviderInstanceId.make("codex"),
         model: "gpt-5-codex",

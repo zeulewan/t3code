@@ -10,6 +10,7 @@ import {
   AuthTokenExchangeGrantType,
   CommandId,
   DEFAULT_SERVER_SETTINGS,
+  DEFAULT_THREAD_IDENTITY,
   EnvironmentId,
   EventId,
   GitCommandError,
@@ -157,6 +158,7 @@ const makeDefaultOrchestrationReadModel = () => {
         id: defaultThreadId,
         projectId: defaultProjectId,
         title: "Default Thread",
+        identity: DEFAULT_THREAD_IDENTITY,
         modelSelection: defaultModelSelection,
         interactionMode: "default" as const,
         runtimeMode: "full-access" as const,
@@ -200,6 +202,7 @@ const makeDefaultOrchestrationThreadShell = (
     hasPendingUserInput: false,
     hasActionableProposedPlan: false,
     ...overrides,
+    identity: overrides.identity ?? DEFAULT_THREAD_IDENTITY,
   };
 };
 
@@ -5539,6 +5542,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             id: ThreadId.make("thread-1"),
             projectId: ProjectId.make("project-a"),
             title: "Thread A",
+            identity: DEFAULT_THREAD_IDENTITY,
             modelSelection: defaultModelSelection,
             interactionMode: "default" as const,
             runtimeMode: "full-access" as const,

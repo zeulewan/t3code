@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
+  DEFAULT_THREAD_IDENTITY,
   ProjectId,
   ThreadId,
   TurnId,
@@ -92,6 +93,7 @@ function makeReadModel(
       id: thread.id,
       projectId,
       title: `Thread ${thread.id}`,
+      identity: DEFAULT_THREAD_IDENTITY,
       modelSelection: defaultModelSelection,
       interactionMode: "default" as const,
       runtimeMode: "full-access" as const,
