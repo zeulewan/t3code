@@ -34,7 +34,11 @@ import {
 import { WorkspacePathsLive } from "./workspace/Layers/WorkspacePaths.ts";
 import { ServerSecretStoreLive } from "./auth/Layers/ServerSecretStore.ts";
 import { ServerAuthLive } from "./auth/Layers/ServerAuth.ts";
-import { T3_COMMS_HANDLE_ENV, T3_THREAD_ID_ENV } from "./commsEnvironment.ts";
+import {
+  T3_COMMS_HANDLE_ENV,
+  T3_COMMS_HANDLE_FALLBACK_ENVS,
+  T3_THREAD_ID_ENV,
+} from "./commsEnvironment.ts";
 
 const ONE_PIXEL_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
@@ -65,6 +69,33 @@ const withProcessEnv = <A, E, R>(
         }
       }),
   );
+
+const withRemovedProcessEnv = <A, E, R>(
+  names: ReadonlyArray<string>,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => names.map((name) => [name, process.env[name]] as const)),
+    () =>
+      Effect.sync(() => {
+        for (const name of names) {
+          delete process.env[name];
+        }
+      }).pipe(Effect.flatMap(() => effect)),
+    (previousEntries) =>
+      Effect.sync(() => {
+        for (const [name, value] of previousEntries) {
+          if (value === undefined) {
+            delete process.env[name];
+          } else {
+            process.env[name] = value;
+          }
+        }
+      }),
+  );
+
+const withClearedCommsSenderEnv = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  withRemovedProcessEnv([T3_THREAD_ID_ENV, ...T3_COMMS_HANDLE_FALLBACK_ENVS], effect);
 
 const captureStdout = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
@@ -459,8 +490,25 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
           assert.isTrue(renamedActorsOutput.output.includes("@renamed-agent"));
           assert.isFalse(renamedActorsOutput.output.includes("@test-agent"));
 
-          const sendOutput = yield* captureStdout(
-            runCli(["agent", "send", "renamed-agent", "Status?", "--base-dir", baseDir]),
+          const agentSendFromAgentSessionError = yield* withProcessEnv(
+            T3_THREAD_ID_ENV,
+            thread?.id ?? "",
+            runCliWithRuntime([
+              "agent",
+              "send",
+              "renamed-agent",
+              "This should use comms instead.",
+              "--base-dir",
+              baseDir,
+            ]).pipe(Effect.flip),
+          );
+          assert.isTrue(String(agentSendFromAgentSessionError).includes("developer-only"));
+          assert.isTrue(String(agentSendFromAgentSessionError).includes("comms send"));
+
+          const sendOutput = yield* withClearedCommsSenderEnv(
+            captureStdout(
+              runCli(["agent", "send", "renamed-agent", "Status?", "--base-dir", baseDir]),
+            ),
           );
           assert.isTrue(sendOutput.output.includes(`Sent turn to ${thread?.id}.`));
 
@@ -491,17 +539,19 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
           const imagePath = join(workspaceRoot, "cli-attachment.png");
           writeFileSync(imagePath, Buffer.from(ONE_PIXEL_PNG_BASE64, "base64"));
 
-          const attachmentOutput = yield* captureStdout(
-            runCli([
-              "agent",
-              "send",
-              "renamed-agent",
-              "Image attached.",
-              "--attach",
-              imagePath,
-              "--base-dir",
-              baseDir,
-            ]),
+          const attachmentOutput = yield* withClearedCommsSenderEnv(
+            captureStdout(
+              runCli([
+                "agent",
+                "send",
+                "renamed-agent",
+                "Image attached.",
+                "--attach",
+                imagePath,
+                "--base-dir",
+                baseDir,
+              ]),
+            ),
           );
           assert.isTrue(
             attachmentOutput.output.includes(`Sent turn to ${thread?.id} with 1 attachment(s).`),
@@ -587,16 +637,18 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
 
           const textPath = join(workspaceRoot, "not-an-image.txt");
           writeFileSync(textPath, "not an image");
-          const attachmentError = yield* runCliWithRuntime([
-            "agent",
-            "send",
-            "renamed-agent",
-            "This should fail.",
-            "--attach",
-            textPath,
-            "--base-dir",
-            baseDir,
-          ]).pipe(Effect.flip);
+          const attachmentError = yield* withClearedCommsSenderEnv(
+            runCliWithRuntime([
+              "agent",
+              "send",
+              "renamed-agent",
+              "This should fail.",
+              "--attach",
+              textPath,
+              "--base-dir",
+              baseDir,
+            ]).pipe(Effect.flip),
+          );
           assert.isTrue(String(attachmentError).includes("Only image attachments are supported"));
         }),
       );
@@ -610,15 +662,16 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
       yield* runCliWithRuntime(["comms", "register", "sender", "--base-dir", baseDir]);
       yield* runCliWithRuntime(["comms", "register", "receiver", "--base-dir", baseDir]);
 
-      const error = yield* runCliWithRuntime([
-        "comms",
-        "send",
-        "sender",
-        "receiver",
-        "hello",
-        "--base-dir",
-        baseDir,
-      ]).pipe(Effect.flip);
+      const error = yield* withRemovedProcessEnv(
+        [T3_THREAD_ID_ENV],
+        withProcessEnv(
+          T3_COMMS_HANDLE_ENV,
+          "sender",
+          runCliWithRuntime(["comms", "send", "receiver", "hello", "--base-dir", baseDir]).pipe(
+            Effect.flip,
+          ),
+        ),
+      );
 
       assert.isTrue(String(error).includes("requires a running T3 server"));
 
@@ -629,6 +682,88 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("rejects legacy positional comms sender arguments", () =>
+    Effect.gen(function* () {
+      const baseDir = mkdtempSync(join(tmpdir(), "t3-cli-comms-legacy-sender-test-"));
+
+      const error = yield* withClearedCommsSenderEnv(
+        runCliWithRuntime([
+          "comms",
+          "send",
+          "sender",
+          "receiver",
+          "hello",
+          "--type",
+          "defer",
+          "--base-dir",
+          baseDir,
+        ]).pipe(Effect.flip),
+      );
+
+      assert.isTrue(String(error).includes("Do not pass a positional sender"));
+      assert.isTrue(String(error).includes("--developer-override"));
+    }),
+  );
+
+  it.effect("supports developer-only comms sender override with --from", () =>
+    Effect.gen(function* () {
+      const baseDir = mkdtempSync(join(tmpdir(), "t3-cli-comms-from-flag-test-"));
+
+      yield* runCliWithRuntime(["comms", "register", "sender", "--base-dir", baseDir]);
+      yield* runCliWithRuntime(["comms", "register", "receiver", "--base-dir", baseDir]);
+
+      const sendOutput = yield* captureStdout(
+        runCli([
+          "comms",
+          "send",
+          "--from",
+          "sender",
+          "--developer-override",
+          "receiver",
+          "hello via developer override",
+          "--type",
+          "defer",
+          "--base-dir",
+          baseDir,
+        ]),
+      );
+
+      assert.isTrue(sendOutput.output.includes("Sent defer message"));
+
+      const inboxOutput = yield* captureStdout(
+        runCli(["comms", "inbox", "receiver", "--base-dir", baseDir]),
+      );
+      assert.isTrue(inboxOutput.output.includes("@sender"));
+      assert.isTrue(inboxOutput.output.includes("hello via developer override"));
+    }),
+  );
+
+  it.effect("requires developer override when passing explicit comms sender", () =>
+    Effect.gen(function* () {
+      const baseDir = mkdtempSync(join(tmpdir(), "t3-cli-comms-from-guard-test-"));
+
+      yield* runCliWithRuntime(["comms", "register", "sender", "--base-dir", baseDir]);
+      yield* runCliWithRuntime(["comms", "register", "receiver", "--base-dir", baseDir]);
+
+      const error = yield* withClearedCommsSenderEnv(
+        runCliWithRuntime([
+          "comms",
+          "send",
+          "--from",
+          "sender",
+          "receiver",
+          "hello without override",
+          "--type",
+          "defer",
+          "--base-dir",
+          baseDir,
+        ]).pipe(Effect.flip),
+      );
+
+      assert.isTrue(String(error).includes("--developer-override"));
+    }),
+  );
+
   it.effect("sends comms with an autodetected sender handle", () =>
     Effect.gen(function* () {
       const baseDir = mkdtempSync(join(tmpdir(), "t3-cli-comms-autodetect-test-"));
@@ -636,20 +771,23 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
       yield* runCliWithRuntime(["comms", "register", "sender", "--base-dir", baseDir]);
       yield* runCliWithRuntime(["comms", "register", "receiver", "--base-dir", baseDir]);
 
-      const sendOutput = yield* withProcessEnv(
-        T3_COMMS_HANDLE_ENV,
-        "sender",
-        captureStdout(
-          runCli([
-            "comms",
-            "send",
-            "receiver",
-            "hello via autodetected handle",
-            "--type",
-            "defer",
-            "--base-dir",
-            baseDir,
-          ]),
+      const sendOutput = yield* withRemovedProcessEnv(
+        [T3_THREAD_ID_ENV],
+        withProcessEnv(
+          T3_COMMS_HANDLE_ENV,
+          "sender",
+          captureStdout(
+            runCli([
+              "comms",
+              "send",
+              "receiver",
+              "hello via autodetected handle",
+              "--type",
+              "defer",
+              "--base-dir",
+              baseDir,
+            ]),
+          ),
         ),
       );
 
