@@ -34,6 +34,7 @@ import {
 import { WorkspacePathsLive } from "./workspace/Layers/WorkspacePaths.ts";
 import { ServerSecretStoreLive } from "./auth/Layers/ServerSecretStore.ts";
 import { ServerAuthLive } from "./auth/Layers/ServerAuth.ts";
+import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import {
   T3_COMMS_HANDLE_ENV,
   T3_COMMS_HANDLE_FALLBACK_ENVS,
@@ -43,7 +44,15 @@ import {
 const ONE_PIXEL_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 
-const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
+const VcsProvisioningTestLayer = Layer.succeed(VcsProvisioningService.VcsProvisioningService, {
+  initRepository: () => Effect.void,
+});
+
+const CliRuntimeLayer = Layer.mergeAll(
+  NodeServices.layer,
+  NetService.layer,
+  VcsProvisioningTestLayer,
+);
 
 const runCli = (args: ReadonlyArray<string>) => Command.runWith(cli, { version: "0.0.0" })(args);
 const runCliWithRuntime = (args: ReadonlyArray<string>) =>
