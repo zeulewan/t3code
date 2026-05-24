@@ -506,7 +506,7 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Auto-open task panel"]
         : []),
       ...(settings.agentIdentityModeEnabled !== DEFAULT_UNIFIED_SETTINGS.agentIdentityModeEnabled
-        ? ["Icon/color agent mode"]
+        ? ["Mnemonics"]
         : []),
       ...(settings.enableAssistantStreaming !== DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming
         ? ["Assistant output"]
@@ -939,13 +939,13 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
-          title="Icon/color agent mode"
-          description="Show thread identities and name newly created sessions from the agent palette."
+          title="Mnemonics"
+          description="Show mnemonic identities and use them when naming newly created sessions."
           resetAction={
             settings.agentIdentityModeEnabled !==
             DEFAULT_UNIFIED_SETTINGS.agentIdentityModeEnabled ? (
               <SettingResetButton
-                label="icon/color agent mode"
+                label="mnemonics"
                 onClick={() =>
                   updateSettings({
                     agentIdentityModeEnabled: DEFAULT_UNIFIED_SETTINGS.agentIdentityModeEnabled,
@@ -960,7 +960,7 @@ export function GeneralSettingsPanel() {
               onCheckedChange={(checked) =>
                 updateSettings({ agentIdentityModeEnabled: Boolean(checked) })
               }
-              aria-label="Enable icon/color agent mode"
+              aria-label="Enable mnemonics"
             />
           }
         />
