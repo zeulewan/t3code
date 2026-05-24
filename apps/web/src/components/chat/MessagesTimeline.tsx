@@ -13,6 +13,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
@@ -39,6 +40,7 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
+import { stackedThreadToast, toastManager } from "../ui/toast";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesTree } from "./ChangedFilesTree";
@@ -72,6 +74,7 @@ import {
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
+import { downloadAttachment } from "./attachmentDownload";
 
 // ---------------------------------------------------------------------------
 // Context — shared state consumed by every row component via Context.
@@ -88,6 +91,7 @@ interface TimelineRowSharedState {
   workspaceRoot: string | undefined;
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   activeThreadEnvironmentId: EnvironmentId;
+  onAttachmentDownload: (input: { url: string; fileName: string }) => void;
   onRevertUserMessage: (messageId: MessageId) => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
@@ -219,6 +223,25 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [listRef, onIsAtEndChange, rows.length]);
 
+  const handleAttachmentDownload = useCallback(
+    ({ url, fileName }: { url: string; fileName: string }) => {
+      void downloadAttachment({
+        environmentId: activeThreadEnvironmentId,
+        url,
+        fileName,
+      }).catch((error) => {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Unable to download attachment",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
+      });
+    },
+    [activeThreadEnvironmentId],
+  );
+
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       timestampFormat,
@@ -228,6 +251,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       workspaceRoot,
       skills,
       activeThreadEnvironmentId,
+      onAttachmentDownload: handleAttachmentDownload,
       onRevertUserMessage,
       onImageExpand,
       onOpenTurnDiff,
@@ -240,6 +264,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       workspaceRoot,
       skills,
       activeThreadEnvironmentId,
+      handleAttachmentDownload,
       onRevertUserMessage,
       onImageExpand,
       onOpenTurnDiff,
@@ -425,6 +450,45 @@ function splitAttachments(attachments: ReadonlyArray<ChatAttachment> | undefined
   return { images, videos, files };
 }
 
+function AttachmentDownloadLink({
+  url,
+  fileName,
+  className,
+  ariaLabel,
+  title,
+  children,
+}: {
+  url: string;
+  fileName: string;
+  className: string;
+  ariaLabel: string;
+  title: string;
+  children: ReactNode;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const handleClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      ctx.onAttachmentDownload({ url, fileName });
+    },
+    [ctx, fileName, url],
+  );
+
+  return (
+    <a
+      href={url}
+      download={fileName}
+      className={className}
+      aria-label={ariaLabel}
+      title={title}
+      onClick={handleClick}
+    >
+      {children}
+    </a>
+  );
+}
+
 function ImageAttachmentGrid({
   attachments,
   className,
@@ -472,17 +536,16 @@ function ImageAttachmentGrid({
               </div>
             )}
             {downloadUrl ? (
-              <a
-                href={downloadUrl}
-                download={image.name}
+              <AttachmentDownloadLink
+                url={downloadUrl}
+                fileName={image.name}
                 className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-1 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground shadow-sm ring-1 ring-border/60 backdrop-blur transition-colors hover:bg-background"
-                aria-label={`Download ${image.name} (${sizeLabel})`}
+                ariaLabel={`Download ${image.name} (${sizeLabel})`}
                 title={`Download ${image.name} (${sizeLabel})`}
-                onClick={(event) => event.stopPropagation()}
               >
                 <DownloadIcon className="size-3" />
                 <span>{sizeLabel}</span>
-              </a>
+              </AttachmentDownloadLink>
             ) : (
               <span className="absolute bottom-1.5 right-1.5 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground shadow-sm ring-1 ring-border/60 backdrop-blur">
                 {sizeLabel}
@@ -581,16 +644,16 @@ function VideoAttachmentGrid({
                 </p>
               </div>
               {downloadUrl ? (
-                <a
-                  href={downloadUrl}
-                  download={video.name}
+                <AttachmentDownloadLink
+                  url={downloadUrl}
+                  fileName={video.name}
                   className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2 py-1 text-[10px] font-medium text-foreground transition-colors hover:bg-accent"
-                  aria-label={`Download ${video.name} (${sizeLabel})`}
+                  ariaLabel={`Download ${video.name} (${sizeLabel})`}
                   title={`Download ${video.name} (${sizeLabel})`}
                 >
                   <DownloadIcon className="size-3" />
                   <span>Download</span>
-                </a>
+                </AttachmentDownloadLink>
               ) : null}
             </div>
           </div>
@@ -636,16 +699,16 @@ function FileAttachmentList({
         );
 
         return file.downloadUrl ? (
-          <a
+          <AttachmentDownloadLink
             key={file.id}
-            href={file.downloadUrl}
-            download={file.name}
+            url={file.downloadUrl}
+            fileName={file.name}
             className="flex items-center gap-3 rounded-lg border border-border/80 bg-background/70 px-3 py-2 transition-colors hover:bg-accent/60"
-            aria-label={`Download ${file.name} (${sizeLabel})`}
+            ariaLabel={`Download ${file.name} (${sizeLabel})`}
             title={`Download ${file.name} (${sizeLabel})`}
           >
             {content}
-          </a>
+          </AttachmentDownloadLink>
         ) : (
           <div
             key={file.id}
