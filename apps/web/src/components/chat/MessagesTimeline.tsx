@@ -74,7 +74,7 @@ import {
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
-import { downloadAttachment } from "./attachmentDownload";
+import { downloadAttachment, fetchAttachmentBlob } from "./attachmentDownload";
 
 // ---------------------------------------------------------------------------
 // Context — shared state consumed by every row component via Context.
@@ -489,6 +489,74 @@ function AttachmentDownloadLink({
   );
 }
 
+type AttachmentPreviewBlobState =
+  | { status: "idle"; src: null; error: null }
+  | { status: "loading"; src: null; error: null }
+  | { status: "loaded"; src: string; error: null }
+  | { status: "error"; src: null; error: Error };
+
+const IDLE_ATTACHMENT_PREVIEW_BLOB_STATE: AttachmentPreviewBlobState = {
+  status: "idle",
+  src: null,
+  error: null,
+};
+
+const LOADING_ATTACHMENT_PREVIEW_BLOB_STATE: AttachmentPreviewBlobState = {
+  status: "loading",
+  src: null,
+  error: null,
+};
+
+function useAttachmentPreviewBlobUrl(previewUrl: string | undefined): AttachmentPreviewBlobState {
+  const ctx = use(TimelineRowCtx);
+  const [state, setState] = useState<AttachmentPreviewBlobState>(
+    IDLE_ATTACHMENT_PREVIEW_BLOB_STATE,
+  );
+
+  useEffect(() => {
+    if (!previewUrl) {
+      setState(IDLE_ATTACHMENT_PREVIEW_BLOB_STATE);
+      return;
+    }
+
+    let disposed = false;
+    let objectUrl: string | null = null;
+    setState(LOADING_ATTACHMENT_PREVIEW_BLOB_STATE);
+
+    void fetchAttachmentBlob({
+      environmentId: ctx.activeThreadEnvironmentId,
+      url: previewUrl,
+    }).then(
+      (blob) => {
+        objectUrl = URL.createObjectURL(blob);
+        if (disposed) {
+          URL.revokeObjectURL(objectUrl);
+          objectUrl = null;
+          return;
+        }
+        setState({ status: "loaded", src: objectUrl, error: null });
+      },
+      (error: unknown) => {
+        if (disposed) return;
+        setState({
+          status: "error",
+          src: null,
+          error: error instanceof Error ? error : new Error("Failed to load attachment preview."),
+        });
+      },
+    );
+
+    return () => {
+      disposed = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [ctx.activeThreadEnvironmentId, previewUrl]);
+
+  return state;
+}
+
 function ImageAttachmentGrid({
   attachments,
   className,
@@ -506,88 +574,121 @@ function ImageAttachmentGrid({
 
   return (
     <div className={cn("grid max-w-[420px] grid-cols-2 gap-2", className)}>
-      {attachments.map((image) => {
-        const sizeLabel = formatAttachmentSize(image.sizeBytes);
-        const downloadUrl = image.downloadUrl ?? image.previewUrl;
-        return (
-          <div
-            key={image.id}
-            className="relative overflow-hidden rounded-lg border border-border/80 bg-background/70"
-          >
-            {image.previewUrl ? (
-              <button
-                type="button"
-                className="block h-full w-full cursor-zoom-in"
-                aria-label={`Preview ${image.name}`}
-                onClick={() => {
-                  const preview = buildExpandedImagePreview(attachments, image.id);
-                  if (!preview) return;
-                  onImageExpand(preview);
-                }}
-              >
-                <ImageAttachmentPreview
-                  image={image}
-                  maxImageHeightClassName={maxImageHeightClassName}
-                />
-              </button>
-            ) : (
-              <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
-                {image.name}
-              </div>
-            )}
-            {downloadUrl ? (
-              <AttachmentDownloadLink
-                url={downloadUrl}
-                fileName={image.name}
-                className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-1 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground shadow-sm ring-1 ring-border/60 backdrop-blur transition-colors hover:bg-background"
-                ariaLabel={`Download ${image.name} (${sizeLabel})`}
-                title={`Download ${image.name} (${sizeLabel})`}
-              >
-                <DownloadIcon className="size-3" />
-                <span>{sizeLabel}</span>
-              </AttachmentDownloadLink>
-            ) : (
-              <span className="absolute bottom-1.5 right-1.5 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground shadow-sm ring-1 ring-border/60 backdrop-blur">
-                {sizeLabel}
-              </span>
-            )}
-          </div>
-        );
-      })}
+      {attachments.map((image) => (
+        <ImageAttachmentCard
+          key={image.id}
+          image={image}
+          attachments={attachments}
+          maxImageHeightClassName={maxImageHeightClassName}
+          onImageExpand={onImageExpand}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ImageAttachmentCard({
+  image,
+  attachments,
+  maxImageHeightClassName,
+  onImageExpand,
+}: {
+  image: ChatImageAttachment;
+  attachments: ReadonlyArray<ChatImageAttachment>;
+  maxImageHeightClassName: string;
+  onImageExpand: (preview: ExpandedImagePreview) => void;
+}) {
+  const preview = useAttachmentPreviewBlobUrl(image.previewUrl);
+  const sizeLabel = formatAttachmentSize(image.sizeBytes);
+  const downloadUrl = image.downloadUrl ?? image.previewUrl;
+  const canExpand = preview.status === "loaded";
+
+  return (
+    <div className="relative overflow-hidden rounded-lg border border-border/80 bg-background/70">
+      {image.previewUrl ? (
+        <button
+          type="button"
+          className={cn("block h-full w-full", canExpand ? "cursor-zoom-in" : "cursor-default")}
+          aria-label={`Preview ${image.name}`}
+          disabled={!canExpand}
+          onClick={() => {
+            if (!canExpand) return;
+            const previewAttachments = attachments.map((attachment) =>
+              attachment.id === image.id ? { ...attachment, previewUrl: preview.src } : attachment,
+            );
+            const expandedPreview = buildExpandedImagePreview(previewAttachments, image.id);
+            if (!expandedPreview) return;
+            onImageExpand(expandedPreview);
+          }}
+        >
+          <ImageAttachmentPreview
+            image={image}
+            preview={preview}
+            maxImageHeightClassName={maxImageHeightClassName}
+          />
+        </button>
+      ) : (
+        <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
+          {image.name}
+        </div>
+      )}
+      {downloadUrl ? (
+        <AttachmentDownloadLink
+          url={downloadUrl}
+          fileName={image.name}
+          className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-1 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground shadow-sm ring-1 ring-border/60 backdrop-blur transition-colors hover:bg-background"
+          ariaLabel={`Download ${image.name} (${sizeLabel})`}
+          title={`Download ${image.name} (${sizeLabel})`}
+        >
+          <DownloadIcon className="size-3" />
+          <span>{sizeLabel}</span>
+        </AttachmentDownloadLink>
+      ) : (
+        <span className="absolute bottom-1.5 right-1.5 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground shadow-sm ring-1 ring-border/60 backdrop-blur">
+          {sizeLabel}
+        </span>
+      )}
     </div>
   );
 }
 
 function ImageAttachmentPreview({
   image,
+  preview,
   maxImageHeightClassName,
 }: {
   image: ChatImageAttachment;
+  preview: AttachmentPreviewBlobState;
   maxImageHeightClassName: string;
 }) {
   const [loadState, setLoadState] = useState<"loading" | "loaded" | "error">("loading");
 
   useEffect(() => {
     setLoadState("loading");
-  }, [image.previewUrl]);
+  }, [preview.src]);
+
+  const displayState =
+    preview.status === "error" ? "error" : preview.status === "loaded" ? loadState : "loading";
 
   return (
     <span className="relative block min-h-[72px]">
-      <img
-        src={image.previewUrl}
-        alt={image.name}
-        className={cn(
-          "block h-auto w-full object-cover transition-opacity duration-150",
-          maxImageHeightClassName,
-          loadState === "loaded" ? "opacity-100" : "opacity-0",
-        )}
-        loading="lazy"
-        onLoad={() => setLoadState("loaded")}
-        onError={() => setLoadState("error")}
-      />
-      {loadState !== "loaded" ? (
+      {preview.src ? (
+        <img
+          src={preview.src}
+          alt={image.name}
+          className={cn(
+            "block h-auto w-full object-cover transition-opacity duration-150",
+            maxImageHeightClassName,
+            displayState === "loaded" ? "opacity-100" : "opacity-0",
+          )}
+          loading="lazy"
+          onLoad={() => setLoadState("loaded")}
+          onError={() => setLoadState("error")}
+        />
+      ) : null}
+      {displayState !== "loaded" ? (
         <span className="absolute inset-0 flex min-h-[72px] items-center justify-center bg-muted/40 text-muted-foreground">
-          {loadState === "error" ? (
+          {displayState === "error" ? (
             <span className="px-2 text-center text-[11px] text-muted-foreground/70">
               {image.name}
             </span>
@@ -613,52 +714,78 @@ function VideoAttachmentGrid({
 
   return (
     <div className={cn("grid max-w-[520px] gap-2", className)}>
-      {attachments.map((video) => {
-        const sizeLabel = formatAttachmentSize(video.sizeBytes);
-        const downloadUrl = video.downloadUrl ?? video.previewUrl;
+      {attachments.map((video) => (
+        <VideoAttachmentCard key={video.id} video={video} />
+      ))}
+    </div>
+  );
+}
 
-        return (
-          <div
-            key={video.id}
-            className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+function VideoAttachmentCard({ video }: { video: Extract<ChatAttachment, { type: "video" }> }) {
+  const preview = useAttachmentPreviewBlobUrl(video.previewUrl);
+  const sizeLabel = formatAttachmentSize(video.sizeBytes);
+  const downloadUrl = video.downloadUrl ?? video.previewUrl;
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-border/80 bg-background/70">
+      {video.previewUrl ? (
+        <VideoAttachmentPreview video={video} preview={preview} />
+      ) : (
+        <div className="flex min-h-[96px] items-center justify-center px-3 py-4 text-center text-xs text-muted-foreground/70">
+          {video.name}
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-3 border-t border-border/70 px-3 py-2">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium text-foreground">{video.name}</p>
+          <p className="text-[11px] text-muted-foreground/70">
+            {video.mimeType} · {sizeLabel}
+          </p>
+        </div>
+        {downloadUrl ? (
+          <AttachmentDownloadLink
+            url={downloadUrl}
+            fileName={video.name}
+            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2 py-1 text-[10px] font-medium text-foreground transition-colors hover:bg-accent"
+            ariaLabel={`Download ${video.name} (${sizeLabel})`}
+            title={`Download ${video.name} (${sizeLabel})`}
           >
-            {video.previewUrl ? (
-              <video
-                className="block max-h-[320px] w-full bg-black object-contain"
-                controls
-                preload="metadata"
-                src={video.previewUrl}
-              >
-                <track kind="captions" />
-              </video>
-            ) : (
-              <div className="flex min-h-[96px] items-center justify-center px-3 py-4 text-center text-xs text-muted-foreground/70">
-                {video.name}
-              </div>
-            )}
-            <div className="flex items-center justify-between gap-3 border-t border-border/70 px-3 py-2">
-              <div className="min-w-0">
-                <p className="truncate text-xs font-medium text-foreground">{video.name}</p>
-                <p className="text-[11px] text-muted-foreground/70">
-                  {video.mimeType} · {sizeLabel}
-                </p>
-              </div>
-              {downloadUrl ? (
-                <AttachmentDownloadLink
-                  url={downloadUrl}
-                  fileName={video.name}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2 py-1 text-[10px] font-medium text-foreground transition-colors hover:bg-accent"
-                  ariaLabel={`Download ${video.name} (${sizeLabel})`}
-                  title={`Download ${video.name} (${sizeLabel})`}
-                >
-                  <DownloadIcon className="size-3" />
-                  <span>Download</span>
-                </AttachmentDownloadLink>
-              ) : null}
-            </div>
-          </div>
-        );
-      })}
+            <DownloadIcon className="size-3" />
+            <span>Download</span>
+          </AttachmentDownloadLink>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function VideoAttachmentPreview({
+  video,
+  preview,
+}: {
+  video: Extract<ChatAttachment, { type: "video" }>;
+  preview: AttachmentPreviewBlobState;
+}) {
+  if (preview.status === "loaded") {
+    return (
+      <video
+        className="block max-h-[320px] w-full bg-black object-contain"
+        controls
+        preload="metadata"
+        src={preview.src}
+      >
+        <track kind="captions" />
+      </video>
+    );
+  }
+
+  return (
+    <div className="flex min-h-[160px] items-center justify-center bg-black/90 px-3 py-4 text-center text-xs text-muted-foreground">
+      {preview.status === "error" ? (
+        <span className="text-muted-foreground/70">{video.name}</span>
+      ) : (
+        <Spinner className="size-4" aria-label={`Loading preview for ${video.name}`} />
+      )}
     </div>
   );
 }
