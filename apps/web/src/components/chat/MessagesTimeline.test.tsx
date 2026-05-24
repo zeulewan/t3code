@@ -239,7 +239,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("Loading preview for diagram.png");
   });
 
-  it("renders video attachments with controls and a download action", async () => {
+  it("renders video attachments with an authenticated preview loading state and a download action", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -250,9 +250,7 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("Here are the attachments.");
     expect(markup).toContain("demo.mp4");
-    expect(markup).toContain("<video");
-    expect(markup).toContain("controls");
-    expect(markup).toContain('src="/attachments/attachment-video-1"');
+    expect(markup).toContain("Loading preview for demo.mp4");
     expect(markup).toContain('href="/attachments/attachment-video-1/download"');
     expect(markup).toContain("2.5 MB");
     expect(markup).toContain("Download demo.mp4");
