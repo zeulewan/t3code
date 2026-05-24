@@ -6,7 +6,7 @@ import { AttachmentDownloadError, fetchAttachmentBlob, saveBlobAsFile } from "./
 const ENVIRONMENT_ID = EnvironmentId.make("environment-local");
 
 describe("attachmentDownload", () => {
-  it("fetches downloads with saved bearer auth and same-origin credentials", async () => {
+  it("fetches downloads with saved bearer auth and cookie credentials", async () => {
     const fetchImpl = vi.fn(async () => new Response("attachment-body", { status: 200 }));
     const readBearerToken = vi.fn(async () => "saved-bearer-token");
 
@@ -21,13 +21,13 @@ describe("attachmentDownload", () => {
     expect(fetchImpl).toHaveBeenCalledWith(
       "https://workstation.example.test/attachments/file-1/download",
       {
-        credentials: "same-origin",
+        credentials: "include",
         headers: { authorization: "Bearer saved-bearer-token" },
       },
     );
   });
 
-  it("still includes same-origin cookie credentials when no saved bearer token exists", async () => {
+  it("still includes cookie credentials when no saved bearer token exists", async () => {
     const fetchImpl = vi.fn(async () => new Response("attachment-body", { status: 200 }));
 
     await fetchAttachmentBlob({
@@ -38,7 +38,7 @@ describe("attachmentDownload", () => {
     });
 
     expect(fetchImpl).toHaveBeenCalledWith("/attachments/file-1/download", {
-      credentials: "same-origin",
+      credentials: "include",
     });
   });
 

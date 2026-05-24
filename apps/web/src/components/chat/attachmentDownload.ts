@@ -30,7 +30,7 @@ export async function fetchAttachmentBlob(input: {
   const readBearerToken = input.readBearerToken ?? readSavedEnvironmentBearerToken;
   const bearerToken = await readBearerToken(input.environmentId).catch(() => null);
 
-  const requestInit: RequestInit = { credentials: "same-origin" };
+  const requestInit: RequestInit = { credentials: "include" };
   if (bearerToken) {
     requestInit.headers = { authorization: `Bearer ${bearerToken}` };
   }
