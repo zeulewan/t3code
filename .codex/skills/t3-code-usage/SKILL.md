@@ -108,6 +108,18 @@ List active comms actors:
 node apps/server/src/bin.ts --log-level error comms actors --project t3code --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
 ```
 
+Check the sender identity that `comms send` will autodetect for the current session:
+
+```sh
+node apps/server/src/bin.ts --log-level error comms whoami --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
+```
+
+If `comms whoami` fails, do not guess a sender and do not use a provider/system handle such as `codex`.
+If the command is unavailable, the runtime has not picked up the newer CLI yet; still do not fall back to
+developer override. Inside an agent session, register the current thread and retry normal target-only comms.
+Use developer override flags only for explicit T3 Code development/debugging or when a human explicitly asks
+for a developer/operator override diagnostic.
+
 Register or update an actor:
 
 ```sh
@@ -134,6 +146,10 @@ Outside an agent session, the developer-only sender override requires a literal 
 ```sh
 node apps/server/src/bin.ts --log-level error comms send --from <sender-handle> --developer-override <target-handle> '<message>' --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733 --type direct
 ```
+
+This override is not normal agent-to-agent comms. Do not use it merely because autodetect failed; first run
+`comms whoami`, register the current agent thread if needed, or ask the human to clarify whether they want a
+developer/operator diagnostic.
 
 Common mistake to avoid:
 

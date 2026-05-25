@@ -226,7 +226,7 @@ const detectSenderActor = (context: OrchestrationCliContext) =>
       return yield* getActorByHandle(context, detected.handle.replace(/^@/, ""));
     }
     return yield* new OrchestrationCliError({
-      message: `Cannot autodetect comms sender. Run this from an agent session with ${T3_THREAD_ID_ENV} set, set ${T3_COMMS_HANDLE_ENV}, or use the developer override: comms send --from <handle> --developer-override <target-handle> '<message>'.`,
+      message: `Cannot autodetect comms sender. Run 'comms whoami' to inspect the current identity. Normal agent-to-agent comms require ${T3_THREAD_ID_ENV} or ${T3_COMMS_HANDLE_ENV}; if inside an agent session, register the current thread and retry. Use --from <handle> --developer-override only for explicit T3 Code development/debugging or human-requested developer/operator diagnostics.`,
     });
   });
 
@@ -278,6 +278,28 @@ function formatInbox(items: ReadonlyArray<CommsMessageWithDelivery>): string {
     );
   }
   return lines.join("\n");
+}
+
+function formatCommsIdentity(input: {
+  readonly actor: CommsActor;
+  readonly detected: ReturnType<typeof readAutoCommsSenderEnv>;
+}): string {
+  const detectedFrom =
+    input.detected.threadId !== undefined
+      ? `${T3_THREAD_ID_ENV}=${input.detected.threadId}`
+      : input.detected.handle !== undefined
+        ? `${input.detected.handleSource ?? T3_COMMS_HANDLE_ENV}=${input.detected.handle}`
+        : "none";
+  return [
+    `Comms identity: @${input.actor.handle}`,
+    `Kind: ${input.actor.kind}`,
+    `Status: ${input.actor.status}`,
+    `Thread: ${input.actor.threadId ?? "(none)"}`,
+    `Project: ${input.actor.projectId ?? "(none)"}`,
+    `Provider: ${input.actor.providerInstanceId ?? "(none)"}`,
+    `Model: ${input.actor.model ?? "(none)"}`,
+    `Detected from: ${detectedFrom}`,
+  ].join("\n");
 }
 
 function deliveryPrompt(input: {
@@ -488,6 +510,24 @@ const commsActorsCommand = Command.make("actors", {
   ),
 );
 
+const commsWhoamiCommand = Command.make("whoami", {
+  ...projectLocationFlags,
+}).pipe(
+  Command.withDescription("Show the autodetected comms sender identity for this session."),
+  Command.withHandler((flags) =>
+    runWithOrchestrationCli(flags, (context: OrchestrationCliContext) =>
+      Effect.gen(function* () {
+        const actor = yield* detectSenderActor(context);
+        yield* requireActiveActorThread(context, actor, "sender");
+        return formatCommsIdentity({
+          actor,
+          detected: readAutoCommsSenderEnv(),
+        });
+      }),
+    ),
+  ),
+);
+
 const commsSendCommand = Command.make("send", {
   ...projectLocationFlags,
   args: Argument.string("target-message").pipe(
@@ -625,6 +665,7 @@ export const commsCommand = Command.make("comms").pipe(
   Command.withSubcommands([
     commsRegisterCommand,
     commsActorsCommand,
+    commsWhoamiCommand,
     commsSendCommand,
     commsInboxCommand,
   ]),

@@ -201,6 +201,21 @@ function commsSendInstruction(input: { readonly context: OrchestrationCliContext
     .join(" ");
 }
 
+function commsWhoamiInstruction(input: { readonly context: OrchestrationCliContext }): string {
+  const devUrlPart = input.context.devUrl
+    ? ` --dev-url ${shellQuote(input.context.devUrl.href)}`
+    : "";
+  return [
+    cliCommandPrefix(),
+    "--log-level error comms whoami",
+    "--base-dir",
+    shellQuote(input.context.baseDir),
+    devUrlPart.trim(),
+  ]
+    .filter((part) => part.length > 0)
+    .join(" ");
+}
+
 function withAgentCommsInstructions(input: {
   readonly message: string;
   readonly context: OrchestrationCliContext;
@@ -216,7 +231,11 @@ function withAgentCommsInstructions(input: {
       context: input.context,
     })}`,
     `- The CLI autodetects you from ${T3_THREAD_ID_ENV}; do not include your own handle as a sender argument.`,
+    `- To verify your sender identity before messaging, run: ${commsWhoamiInstruction({
+      context: input.context,
+    })}`,
     `- If autodetect fails, run: comms register ${input.handle} --thread "$${T3_THREAD_ID_ENV}", then retry the same target-only send command.`,
+    "- Do not use --from or --developer-override for normal agent-to-agent comms; those flags are only for explicit T3 Code development/debugging or a human-requested developer/operator diagnostic.",
     "- Handles are written without the @ in the command, for example: bob or joe.",
   ].join("\n");
 }

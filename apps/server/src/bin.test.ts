@@ -573,6 +573,14 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
           assert.isTrue(autodetectedInboxOutput.output.includes("@renamed-agent"));
           assert.isTrue(autodetectedInboxOutput.output.includes("Hello from autodetected thread."));
 
+          const whoamiOutput = yield* withProcessEnv(
+            T3_THREAD_ID_ENV,
+            thread?.id ?? "",
+            captureStdout(runCli(["comms", "whoami", "--base-dir", baseDir])),
+          );
+          assert.isTrue(whoamiOutput.output.includes("Comms identity: @renamed-agent"));
+          assert.isTrue(whoamiOutput.output.includes(`Detected from: ${T3_THREAD_ID_ENV}=`));
+
           const imagePath = join(workspaceRoot, "cli-attachment.png");
           writeFileSync(imagePath, Buffer.from(ONE_PIXEL_PNG_BASE64, "base64"));
 
@@ -807,6 +815,17 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
 
       yield* runCliWithRuntime(["comms", "register", "sender", "--base-dir", baseDir]);
       yield* runCliWithRuntime(["comms", "register", "receiver", "--base-dir", baseDir]);
+
+      const whoamiOutput = yield* withRemovedProcessEnv(
+        [T3_THREAD_ID_ENV],
+        withProcessEnv(
+          T3_COMMS_HANDLE_ENV,
+          "sender",
+          captureStdout(runCli(["comms", "whoami", "--base-dir", baseDir])),
+        ),
+      );
+      assert.isTrue(whoamiOutput.output.includes("Comms identity: @sender"));
+      assert.isTrue(whoamiOutput.output.includes(`Detected from: ${T3_COMMS_HANDLE_ENV}=sender`));
 
       const sendOutput = yield* withRemovedProcessEnv(
         [T3_THREAD_ID_ENV],
