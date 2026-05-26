@@ -88,6 +88,10 @@ function sameId(left: string | null | undefined, right: string | null | undefine
   return left === right;
 }
 
+function sameTitleIgnoringCase(left: string, right: string): boolean {
+  return left.trim().toLocaleLowerCase() === right.trim().toLocaleLowerCase();
+}
+
 function hasAssistantMessageForTurn(
   messages: ReadonlyArray<OrchestrationMessage>,
   turnId: TurnId,
@@ -1570,16 +1574,21 @@ const make = Effect.gen(function* () {
         }
       }
 
-      if (
-        event.type === "thread.metadata.updated" &&
-        event.payload.name &&
-        event.payload.name.trim() !== thread.title.trim()
-      ) {
+      if (event.type === "thread.metadata.updated" && event.payload.name) {
+        const providerTitle = event.payload.name.trim();
+        const currentTitle = thread.title.trim();
+        if (
+          !providerTitle ||
+          providerTitle === currentTitle ||
+          sameTitleIgnoringCase(providerTitle, currentTitle)
+        ) {
+          return;
+        }
         yield* orchestrationEngine.dispatch({
           type: "thread.meta.update",
           commandId: providerCommandId(event, "thread-meta-update"),
           threadId: thread.id,
-          title: event.payload.name,
+          title: providerTitle,
         });
       }
 

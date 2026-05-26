@@ -2594,6 +2594,29 @@ describe("ProviderRuntimeIngestion", () => {
     expect(checkpoint?.checkpointRef).toBe("provider-diff:evt-turn-diff-updated");
   });
 
+  it("ignores provider metadata updates that only change title casing", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    harness.emit({
+      type: "thread.metadata.updated",
+      eventId: asEventId("evt-thread-metadata-case-only"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      payload: {
+        name: "thread",
+        metadata: { source: "provider" },
+      },
+    });
+
+    await harness.drain();
+
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(thread?.title).toBe("Thread");
+  });
+
   it("projects context window updates into normalized thread activities", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

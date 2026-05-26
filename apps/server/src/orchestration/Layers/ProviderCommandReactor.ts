@@ -118,6 +118,10 @@ function canReplaceThreadTitle(currentTitle: string, titleSeed?: string): boolea
     : false;
 }
 
+function isProviderOriginCommand(commandId: string | null | undefined): boolean {
+  return commandId?.startsWith("provider:") ?? false;
+}
+
 function findProviderAdapterRequestError(
   cause: Cause.Cause<ProviderServiceError>,
 ): ProviderAdapterRequestError | undefined {
@@ -940,6 +944,9 @@ const make = Effect.gen(function* () {
   const processThreadMetaUpdated = Effect.fn("processThreadMetaUpdated")(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.meta-updated" }>,
   ) {
+    if (isProviderOriginCommand(event.commandId)) {
+      return;
+    }
     const title = event.payload.title?.trim();
     if (!title) {
       return;

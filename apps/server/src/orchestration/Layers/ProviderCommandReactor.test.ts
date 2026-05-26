@@ -220,6 +220,7 @@ describe("ProviderCommandReactor", () => {
     const interruptTurn = vi.fn((_: unknown) => Effect.void);
     const respondToRequest = vi.fn<ProviderServiceShape["respondToRequest"]>(() => Effect.void);
     const respondToUserInput = vi.fn<ProviderServiceShape["respondToUserInput"]>(() => Effect.void);
+    const setThreadTitle = vi.fn<ProviderServiceShape["setThreadTitle"]>(() => Effect.void);
     const stopSession = vi.fn((input: unknown) =>
       Effect.sync(() => {
         const threadId =
@@ -284,7 +285,7 @@ describe("ProviderCommandReactor", () => {
     const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;
     const service: ProviderServiceShape = {
       startSession: startSession as ProviderServiceShape["startSession"],
-      setThreadTitle: vi.fn(() => Effect.void),
+      setThreadTitle,
       sendTurn: sendTurn as ProviderServiceShape["sendTurn"],
       interruptTurn: interruptTurn as ProviderServiceShape["interruptTurn"],
       respondToRequest: respondToRequest as ProviderServiceShape["respondToRequest"],
@@ -404,6 +405,7 @@ describe("ProviderCommandReactor", () => {
       interruptTurn,
       respondToRequest,
       respondToUserInput,
+      setThreadTitle,
       stopSession,
       renameBranch,
       refreshStatus,
@@ -414,6 +416,55 @@ describe("ProviderCommandReactor", () => {
       drain,
     };
   }
+
+  it("syncs user-origin thread title changes to the provider but ignores provider-origin echoes", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-ready"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "ready",
+          providerName: ProviderDriverKind.make("codex"),
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-user-title"),
+        threadId: ThreadId.make("thread-1"),
+        title: "Manual title",
+      }),
+    );
+    await harness.drain();
+    expect(harness.setThreadTitle).toHaveBeenCalledWith({
+      threadId: ThreadId.make("thread-1"),
+      title: "Manual title",
+    });
+
+    harness.setThreadTitle.mockClear();
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("provider:event-id:thread-meta-update:echo-id"),
+        threadId: ThreadId.make("thread-1"),
+        title: "Provider echo",
+      }),
+    );
+    await harness.drain();
+    expect(harness.setThreadTitle).not.toHaveBeenCalled();
+  });
 
   it("reacts to thread.turn.start by ensuring session and sending provider turn", async () => {
     const harness = await createHarness();
