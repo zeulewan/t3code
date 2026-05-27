@@ -65,6 +65,7 @@ import {
 const decodeReadModel = Schema.decodeUnknownEffect(OrchestrationReadModel);
 const decodeShellSnapshot = Schema.decodeUnknownEffect(OrchestrationShellSnapshot);
 const decodeThread = Schema.decodeUnknownEffect(OrchestrationThread);
+const MAX_THREAD_ACTIVITY_ROWS = 500;
 const ProjectionProjectDbRowSchema = ProjectionProject.mapFields(
   Struct.assign({
     defaultModelSelection: Schema.NullOr(Schema.fromJsonString(ModelSelection)),
@@ -488,6 +489,23 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
     Result: ProjectionThreadActivityDbRowSchema,
     execute: () =>
       sql`
+        WITH ranked_thread_activities AS (
+          SELECT
+            activity_id,
+            thread_id,
+            turn_id,
+            tone,
+            kind,
+            summary,
+            payload_json,
+            sequence,
+            created_at,
+            ROW_NUMBER() OVER (
+              PARTITION BY thread_id
+              ORDER BY sequence DESC, created_at DESC, activity_id DESC
+            ) AS row_index
+          FROM projection_thread_activities
+        )
         SELECT
           activity_id AS "activityId",
           thread_id AS "threadId",
@@ -498,7 +516,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           json_remove(payload_json, '$.data.item.aggregatedOutput') AS "payload",
           sequence,
           created_at AS "createdAt"
-        FROM projection_thread_activities
+        FROM ranked_thread_activities
+        WHERE row_index <= ${MAX_THREAD_ACTIVITY_ROWS}
         ORDER BY
           thread_id ASC,
           sequence ASC,
@@ -856,6 +875,22 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
     Result: ProjectionThreadActivityDbRowSchema,
     execute: ({ threadId }) =>
       sql`
+        WITH latest_thread_activities AS (
+          SELECT
+            activity_id,
+            thread_id,
+            turn_id,
+            tone,
+            kind,
+            summary,
+            payload_json,
+            sequence,
+            created_at
+          FROM projection_thread_activities
+          WHERE thread_id = ${threadId}
+          ORDER BY sequence DESC, created_at DESC, activity_id DESC
+          LIMIT ${MAX_THREAD_ACTIVITY_ROWS}
+        )
         SELECT
           activity_id AS "activityId",
           thread_id AS "threadId",
@@ -866,8 +901,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           json_remove(payload_json, '$.data.item.aggregatedOutput') AS "payload",
           sequence,
           created_at AS "createdAt"
-        FROM projection_thread_activities
-        WHERE thread_id = ${threadId}
+        FROM latest_thread_activities
         ORDER BY
           sequence ASC,
           created_at ASC,
