@@ -500,7 +500,7 @@ describe("retainThreadDetailSubscription", () => {
     await resetEnvironmentServiceForTests();
   });
 
-  it("reconnects environment streams when the browser resumes from the background", async () => {
+  it("keeps environment streams connected when a browser resume finds fresh heartbeats", async () => {
     let visibilityState: DocumentVisibilityState = "visible";
     const documentTarget = new EventTarget();
     const windowTarget = new EventTarget();
@@ -545,6 +545,40 @@ describe("retainThreadDetailSubscription", () => {
         dispose: vi.fn(async () => undefined),
       };
     });
+
+    const stop = startEnvironmentConnectionService(new QueryClient());
+    expect(mockConnectionReconnects).toHaveLength(1);
+
+    visibilityState = "hidden";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    expect(mockConnectionReconnects[0]).not.toHaveBeenCalled();
+
+    visibilityState = "visible";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    expect(mockConnectionReconnects[0]).not.toHaveBeenCalled();
+
+    stop();
+    await resetEnvironmentServiceForTests();
+  });
+
+  it("reconnects environment streams when the browser resumes with stale heartbeats", async () => {
+    let visibilityState: DocumentVisibilityState = "visible";
+    const documentTarget = new EventTarget();
+    const windowTarget = new EventTarget();
+    vi.stubGlobal("document", {
+      addEventListener: documentTarget.addEventListener.bind(documentTarget),
+      removeEventListener: documentTarget.removeEventListener.bind(documentTarget),
+      get visibilityState() {
+        return visibilityState;
+      },
+    });
+    vi.stubGlobal("window", {
+      addEventListener: windowTarget.addEventListener.bind(windowTarget),
+      removeEventListener: windowTarget.removeEventListener.bind(windowTarget),
+    });
+
+    const { resetEnvironmentServiceForTests, startEnvironmentConnectionService } =
+      await import("./service");
 
     const stop = startEnvironmentConnectionService(new QueryClient());
     expect(mockConnectionReconnects).toHaveLength(1);
