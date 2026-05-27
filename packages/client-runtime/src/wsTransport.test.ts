@@ -5,6 +5,7 @@ import * as Stream from "effect/Stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WsTransport } from "./wsTransport.ts";
+import { createWsRpcProtocolLayer } from "./wsRpcProtocol.ts";
 
 type WsEventType = "open" | "message" | "close" | "error";
 type WsEvent = { code?: number; data?: unknown; reason?: string; type?: string };
@@ -241,6 +242,44 @@ describe("WsTransport", () => {
 
     nowSpy.mockReturnValue(1_501);
     expect(transport.isHeartbeatFresh(500)).toBe(false);
+
+    await transport.dispose();
+  });
+
+  it("tolerates transient missed heartbeat pongs before timing out", async () => {
+    const onHeartbeatPing = vi.fn();
+    const onHeartbeatTimeout = vi.fn();
+    const transport = createTransport(
+      "ws://localhost:3020",
+      {
+        onHeartbeatPing,
+        onHeartbeatTimeout,
+      },
+      {
+        createProtocolLayer: (url, lifecycleHandlers) =>
+          createWsRpcProtocolLayer(url, lifecycleHandlers, {
+            heartbeat: {
+              pingInterval: Duration.millis(10),
+              missingPongLimit: 3,
+            },
+          }),
+      },
+    );
+
+    await waitFor(() => {
+      expect(sockets).toHaveLength(1);
+    });
+
+    getSocket().open();
+
+    await waitFor(() => {
+      expect(onHeartbeatPing).toHaveBeenCalledTimes(2);
+    });
+    expect(onHeartbeatTimeout).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(onHeartbeatTimeout).toHaveBeenCalledTimes(1);
+    });
 
     await transport.dispose();
   });

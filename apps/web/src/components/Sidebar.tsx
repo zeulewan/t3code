@@ -77,6 +77,7 @@ import {
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useThreadRunningTerminalIds } from "../terminalSessionState";
 import { useUiStateStore } from "../uiStateStore";
+import { useWsConnectionStatus } from "../rpc/wsConnectionState";
 import {
   resolveShortcutCommand,
   shortcutLabelForCommand,
@@ -162,6 +163,7 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useCommandPaletteStore } from "../commandPaletteStore";
 import {
   getSidebarThreadIdsToPrewarm,
+  resolveSidebarThreadPrewarmDelayMs,
   resolveAdjacentThreadId,
   isContextMenuPointerDown,
   resolveProjectStatusIndicator,
@@ -3306,9 +3308,37 @@ export default function Sidebar() {
     ? threadJumpLabelByKey
     : EMPTY_THREAD_JUMP_LABELS;
   const orderedSidebarThreadKeys = visibleSidebarThreadKeys;
+  const wsConnectionStatus = useWsConnectionStatus();
+  const [sidebarThreadPrewarmReady, setSidebarThreadPrewarmReady] = useState(false);
+  useEffect(() => {
+    const delayMs = resolveSidebarThreadPrewarmDelayMs({
+      connectedAt: wsConnectionStatus.connectedAt,
+      isConnected: wsConnectionStatus.phase === "connected",
+      nowMs: Date.now(),
+    });
+
+    if (delayMs === null) {
+      setSidebarThreadPrewarmReady(false);
+      return;
+    }
+
+    if (delayMs === 0) {
+      setSidebarThreadPrewarmReady(true);
+      return;
+    }
+
+    setSidebarThreadPrewarmReady(false);
+    const timeoutId = window.setTimeout(() => {
+      setSidebarThreadPrewarmReady(true);
+    }, delayMs);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [wsConnectionStatus.connectedAt, wsConnectionStatus.phase]);
   const prewarmedSidebarThreadKeys = useMemo(
-    () => getSidebarThreadIdsToPrewarm(visibleSidebarThreadKeys),
-    [visibleSidebarThreadKeys],
+    () => (sidebarThreadPrewarmReady ? getSidebarThreadIdsToPrewarm(visibleSidebarThreadKeys) : []),
+    [sidebarThreadPrewarmReady, visibleSidebarThreadKeys],
   );
   const prewarmedSidebarThreadRefs = useMemo(
     () =>
