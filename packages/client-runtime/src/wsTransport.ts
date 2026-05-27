@@ -282,6 +282,7 @@ export class WsTransport {
         lifecycleHandlers?.isCloseIntentional?.() === true,
       onOpen: () => {
         this.lastSocketOpenedAt = performance.now();
+        this.lastHeartbeatPongAt = performance.now();
         lifecycleHandlers?.onOpen?.();
       },
       onHeartbeatPong: () => {
