@@ -13,8 +13,10 @@ import { isLatestTurnSettled } from "../session-logic";
 export const THREAD_SELECTION_SAFE_SELECTOR = "[data-thread-item], [data-thread-selection-safe]";
 export const THREAD_JUMP_HINT_SHOW_DELAY_MS = 100;
 // Visible sidebar rows are prewarmed into the thread-detail cache so opening a
-// nearby thread usually reuses an already-hot subscription.
-export const SIDEBAR_THREAD_PREWARM_LIMIT = 10;
+// nearby thread usually reuses an already-hot subscription. Keep this modest:
+// prewarm competes with active chat backfill on reconnect.
+export const SIDEBAR_THREAD_PREWARM_LIMIT = 4;
+export const SIDEBAR_THREAD_PREWARM_STABILITY_MS = 8_000;
 export type SidebarNewThreadEnvMode = "local" | "worktree";
 type SidebarProject = {
   id: string;
@@ -257,6 +259,27 @@ export function getSidebarThreadIdsToPrewarm<TThreadId>(
   limit = SIDEBAR_THREAD_PREWARM_LIMIT,
 ): TThreadId[] {
   return visibleThreadIds.slice(0, Math.max(0, limit));
+}
+
+export function resolveSidebarThreadPrewarmDelayMs(input: {
+  connectedAt: string | null;
+  isConnected: boolean;
+  nowMs: number;
+  stabilityMs?: number;
+}): number | null {
+  if (!input.isConnected || input.connectedAt === null) {
+    return null;
+  }
+
+  const connectedAtMs = Date.parse(input.connectedAt);
+  if (Number.isNaN(connectedAtMs)) {
+    return null;
+  }
+
+  return Math.max(
+    0,
+    (input.stabilityMs ?? SIDEBAR_THREAD_PREWARM_STABILITY_MS) - (input.nowMs - connectedAtMs),
+  );
 }
 
 export function resolveAdjacentThreadId<T>(input: {

@@ -5,6 +5,7 @@ import {
   createThreadJumpHintVisibilityController,
   getSidebarThreadIdsToPrewarm,
   getVisibleSidebarThreadIds,
+  resolveSidebarThreadPrewarmDelayMs,
   resolveAdjacentThreadId,
   getFallbackThreadIdAfterDelete,
   getVisibleThreadsForProject,
@@ -131,6 +132,15 @@ describe("createThreadJumpHintVisibilityController", () => {
 });
 
 describe("getSidebarThreadIdsToPrewarm", () => {
+  it("uses the conservative default prewarm limit", () => {
+    expect(getSidebarThreadIdsToPrewarm(["t1", "t2", "t3", "t4", "t5"])).toEqual([
+      "t1",
+      "t2",
+      "t3",
+      "t4",
+    ]);
+  });
+
   it("returns only the first visible thread ids up to the prewarm limit", () => {
     expect(getSidebarThreadIdsToPrewarm(["t1", "t2", "t3"], 2)).toEqual(["t1", "t2"]);
   });
@@ -141,6 +151,41 @@ describe("getSidebarThreadIdsToPrewarm", () => {
 
   it("returns no thread ids when the limit is zero", () => {
     expect(getSidebarThreadIdsToPrewarm(["t1", "t2"], 0)).toEqual([]);
+  });
+});
+
+describe("resolveSidebarThreadPrewarmDelayMs", () => {
+  it("waits until the websocket has been stable before prewarming sidebar threads", () => {
+    expect(
+      resolveSidebarThreadPrewarmDelayMs({
+        connectedAt: "2026-05-27T10:00:00.000Z",
+        isConnected: true,
+        nowMs: Date.parse("2026-05-27T10:00:03.000Z"),
+        stabilityMs: 8_000,
+      }),
+    ).toBe(5_000);
+  });
+
+  it("allows prewarm after the websocket stability window has elapsed", () => {
+    expect(
+      resolveSidebarThreadPrewarmDelayMs({
+        connectedAt: "2026-05-27T10:00:00.000Z",
+        isConnected: true,
+        nowMs: Date.parse("2026-05-27T10:00:09.000Z"),
+        stabilityMs: 8_000,
+      }),
+    ).toBe(0);
+  });
+
+  it("disables prewarm while disconnected", () => {
+    expect(
+      resolveSidebarThreadPrewarmDelayMs({
+        connectedAt: "2026-05-27T10:00:00.000Z",
+        isConnected: false,
+        nowMs: Date.parse("2026-05-27T10:00:09.000Z"),
+        stabilityMs: 8_000,
+      }),
+    ).toBeNull();
   });
 });
 
