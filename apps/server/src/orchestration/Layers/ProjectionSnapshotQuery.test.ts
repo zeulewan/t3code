@@ -1014,6 +1014,122 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
     }),
   );
 
+  it.effect("limits hydrated thread activities to the latest retained activity window", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`DELETE FROM projection_projects`;
+      yield* sql`DELETE FROM projection_threads`;
+      yield* sql`DELETE FROM projection_thread_activities`;
+      yield* sql`DELETE FROM projection_state`;
+
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id,
+          title,
+          workspace_root,
+          default_model_selection_json,
+          scripts_json,
+          created_at,
+          updated_at,
+          deleted_at
+        )
+        VALUES (
+          'project-1',
+          'Project 1',
+          '/tmp/project-1',
+          '{"provider":"codex","model":"gpt-5-codex"}',
+          '[]',
+          '2026-04-02T00:00:00.000Z',
+          '2026-04-02T00:00:01.000Z',
+          NULL
+        )
+      `;
+
+      yield* sql`
+        INSERT INTO projection_threads (
+          thread_id,
+          project_id,
+          title,
+          model_selection_json,
+          runtime_mode,
+          interaction_mode,
+          branch,
+          worktree_path,
+          latest_turn_id,
+          latest_user_message_at,
+          pending_approval_count,
+          pending_user_input_count,
+          has_actionable_proposed_plan,
+          created_at,
+          updated_at,
+          deleted_at
+        )
+        VALUES (
+          'thread-1',
+          'project-1',
+          'Thread 1',
+          '{"provider":"codex","model":"gpt-5-codex"}',
+          'full-access',
+          'default',
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          0,
+          0,
+          0,
+          '2026-04-02T00:00:02.000Z',
+          '2026-04-02T00:00:03.000Z',
+          NULL
+        )
+      `;
+
+      for (let index = 1; index <= 505; index += 1) {
+        const suffix = String(index).padStart(3, "0");
+        const minutes = String(Math.floor(index / 60)).padStart(2, "0");
+        const seconds = String(index % 60).padStart(2, "0");
+        yield* sql`
+          INSERT INTO projection_thread_activities (
+            activity_id,
+            thread_id,
+            turn_id,
+            tone,
+            kind,
+            summary,
+            payload_json,
+            sequence,
+            created_at
+          )
+          VALUES (
+            ${`activity-${suffix}`},
+            'thread-1',
+            NULL,
+            'info',
+            'runtime.note',
+            ${`activity ${suffix}`},
+            ${`{"index":${index}}`},
+            ${index},
+            ${`2026-04-02T00:${minutes}:${seconds}.000Z`}
+          )
+        `;
+      }
+
+      const snapshot = yield* snapshotQuery.getSnapshot();
+      const threadDetail = yield* snapshotQuery.getThreadDetailById(ThreadId.make("thread-1"));
+      const snapshotActivities = snapshot.threads[0]?.activities ?? [];
+
+      assert.equal(threadDetail._tag, "Some");
+      assert.equal(snapshotActivities.length, 500);
+      assert.equal(snapshotActivities[0]?.id, asEventId("activity-006"));
+      assert.equal(snapshotActivities.at(-1)?.id, asEventId("activity-505"));
+      if (threadDetail._tag === "Some") {
+        assert.deepEqual(threadDetail.value.activities, snapshotActivities);
+      }
+    }),
+  );
+
   it.effect("uses projection_threads.latest_turn_id for targeted thread latest turn queries", () =>
     Effect.gen(function* () {
       const snapshotQuery = yield* ProjectionSnapshotQuery;
