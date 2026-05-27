@@ -276,6 +276,10 @@ export class WsTransport {
         this.disposed ||
         this.intentionalCloseDepth > 0 ||
         lifecycleHandlers?.isCloseIntentional?.() === true,
+      onOpen: () => {
+        this.lastHeartbeatPongAt = performance.now();
+        lifecycleHandlers?.onOpen?.();
+      },
       onHeartbeatPong: () => {
         this.lastHeartbeatPongAt = performance.now();
         lifecycleHandlers?.onHeartbeatPong?.();

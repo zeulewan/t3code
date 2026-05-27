@@ -7,6 +7,7 @@ import {
   recordWsConnectionAttempt,
   recordWsConnectionClosed,
   recordWsConnectionErrored,
+  recordWsConnectionHeartbeatTimeout,
   recordWsConnectionOpened,
   resetWsConnectionStateForTests,
   setBrowserOnlineStatus,
@@ -89,6 +90,19 @@ describe("wsConnectionState", () => {
 
     expect(getWsConnectionStatus()).toMatchObject({
       closeReason: "socket closed Hint: Version mismatch. Try syncing the client and server.",
+    });
+  });
+
+  it("records heartbeat timeouts as explicit websocket errors", () => {
+    recordWsConnectionAttempt("ws://localhost:3020/ws");
+    recordWsConnectionOpened();
+    recordWsConnectionHeartbeatTimeout();
+
+    expect(getWsConnectionStatus()).toMatchObject({
+      lastError: "WebSocket heartbeat timeout: missed server pong.",
+      lastErrorAt: "2026-04-03T20:30:00.000Z",
+      phase: "disconnected",
+      reconnectPhase: "waiting",
     });
   });
 

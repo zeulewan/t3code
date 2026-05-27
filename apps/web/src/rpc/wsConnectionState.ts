@@ -155,6 +155,12 @@ export function recordWsConnectionErrored(
   );
 }
 
+export function recordWsConnectionHeartbeatTimeout(
+  metadata?: WsConnectionMetadata,
+): WsConnectionStatus {
+  return recordWsConnectionErrored("WebSocket heartbeat timeout: missed server pong.", metadata);
+}
+
 export function recordWsConnectionClosed(
   details?: {
     readonly code?: number;

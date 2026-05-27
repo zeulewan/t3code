@@ -1,4 +1,5 @@
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -96,11 +97,19 @@ import {
   type SessionCredentialChange,
 } from "./auth/Services/SessionCredentialService.ts";
 import { respondToAuthError } from "./auth/http.ts";
+import { deriveAuthClientMetadata } from "./auth/utils.ts";
 import { CommsRepository } from "./persistence/Services/Comms.ts";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 const isWorkspacePathOutsideRootError = Schema.is(WorkspacePathOutsideRootError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+
+function truncateLogValue(value: string | undefined, maxLength: number): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength)}...`;
+}
 
 const toCommsError = (cause: unknown, message: string) =>
   new CommsError({
@@ -1385,6 +1394,20 @@ export const websocketRpcRouteLayer = Layer.unwrap(
         const serverAuth = yield* ServerAuth;
         const sessions = yield* SessionCredentialService;
         const session = yield* serverAuth.authenticateWebSocketUpgrade(request);
+        const clientMetadata = deriveAuthClientMetadata({ request });
+        const startedAt = yield* Clock.currentTimeMillis;
+        const logMetadata: Record<string, string | number> = {
+          authSessionId: String(session.sessionId),
+          authSubject: session.subject,
+          authMethod: session.method,
+          clientDeviceType: clientMetadata.deviceType,
+        };
+        if (clientMetadata.browser) logMetadata.clientBrowser = clientMetadata.browser;
+        if (clientMetadata.os) logMetadata.clientOs = clientMetadata.os;
+        if (clientMetadata.ipAddress) logMetadata.clientIpAddress = clientMetadata.ipAddress;
+        if (clientMetadata.userAgent) {
+          logMetadata.clientUserAgent = truncateLogValue(clientMetadata.userAgent, 240) ?? "";
+        }
         const rpcWebSocketHttpEffect = yield* RpcServer.toHttpEffectWebsocket(WsRpcGroup, {
           disableTracing: true,
         }).pipe(
@@ -1417,9 +1440,20 @@ export const websocketRpcRouteLayer = Layer.unwrap(
           ),
         );
         return yield* Effect.acquireUseRelease(
-          sessions.markConnected(session.sessionId),
+          Effect.gen(function* () {
+            yield* sessions.markConnected(session.sessionId);
+            yield* Effect.logInfo("WebSocket RPC connected", logMetadata);
+          }),
           () => rpcWebSocketHttpEffect,
-          () => sessions.markDisconnected(session.sessionId),
+          () =>
+            Effect.gen(function* () {
+              const endedAt = yield* Clock.currentTimeMillis;
+              yield* Effect.logInfo("WebSocket RPC disconnected", {
+                ...logMetadata,
+                durationMs: Math.max(0, endedAt - startedAt),
+              });
+              yield* sessions.markDisconnected(session.sessionId);
+            }),
         );
       }).pipe(Effect.catchTag("AuthError", respondToAuthError)),
     ),

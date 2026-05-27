@@ -16,8 +16,11 @@ import {
   recordWsConnectionAttempt,
   recordWsConnectionClosed,
   recordWsConnectionErrored,
+  recordWsConnectionHeartbeatTimeout,
+  getWsConnectionStatus,
   recordWsConnectionOpened,
 } from "./wsConnectionState";
+import { recordWsLifecycleDiagnostic } from "./wsDiagnostics";
 
 function createWsRpcProtocolLayer(
   url: WsRpcProtocolSocketUrlProvider,
@@ -29,10 +32,31 @@ function createWsRpcProtocolLayer(
       onOpen: recordWsConnectionOpened,
       onError: (message) => {
         clearAllTrackedRpcRequests();
+        recordWsLifecycleDiagnostic({
+          event: "error",
+          status: getWsConnectionStatus(),
+          error: message,
+        });
         recordWsConnectionErrored(message);
+      },
+      onHeartbeatTimeout: () => {
+        clearAllTrackedRpcRequests();
+        const status = recordWsConnectionHeartbeatTimeout();
+        recordWsLifecycleDiagnostic({
+          event: "heartbeat-timeout",
+          status,
+          error: status.lastError,
+        });
       },
       onClose: (details, context) => {
         clearAllTrackedRpcRequests();
+        recordWsLifecycleDiagnostic({
+          event: "close",
+          status: getWsConnectionStatus(),
+          code: details.code,
+          reason: details.reason,
+          intentional: context.intentional,
+        });
         if (context.intentional) {
           return;
         }

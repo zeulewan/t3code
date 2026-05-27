@@ -198,6 +198,7 @@ describe("WsTransport", () => {
     await waitFor(() => {
       expect(onOpen).toHaveBeenCalledOnce();
     });
+    expect(transport.isHeartbeatFresh()).toBe(true);
 
     socket.close(1012, "service restart");
 
