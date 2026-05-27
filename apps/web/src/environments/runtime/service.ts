@@ -150,6 +150,7 @@ let lastBrowserResumeReconnectAt = Number.NEGATIVE_INFINITY;
 const THREAD_DETAIL_SUBSCRIPTION_IDLE_EVICTION_MS = 15 * 60 * 1000;
 const MAX_CACHED_THREAD_DETAIL_SUBSCRIPTIONS = 32;
 const BROWSER_RESUME_RECONNECT_COOLDOWN_MS = 2_000;
+const BROWSER_RESUME_FRESH_HEARTBEAT_MAX_AGE_MS = 15_000;
 const INITIAL_SERVER_CONFIG_SNAPSHOT_WAIT_MS = 150;
 const NOOP = () => undefined;
 const SSH_HTTP_STATUS_RE = /^\[ssh_http:(\d+)\]\s/u;
@@ -1494,14 +1495,25 @@ function stopActiveService() {
   activeService = null;
 }
 
-function reconnectEnvironmentConnectionsAfterBrowserResume(reason: string): void {
+function reconnectEnvironmentConnectionsAfterBrowserResume(
+  reason: string,
+  options?: { readonly force?: boolean },
+): void {
   const now = Date.now();
   if (now - lastBrowserResumeReconnectAt < BROWSER_RESUME_RECONNECT_COOLDOWN_MS) {
     return;
   }
-  lastBrowserResumeReconnectAt = now;
 
+  let didScheduleReconnect = false;
   for (const connection of environmentConnections.values()) {
+    if (
+      options?.force !== true &&
+      connection.client.isHeartbeatFresh(BROWSER_RESUME_FRESH_HEARTBEAT_MAX_AGE_MS)
+    ) {
+      continue;
+    }
+
+    didScheduleReconnect = true;
     void connection.reconnect().catch((error) => {
       console.warn("Environment reconnect after browser resume failed", {
         environmentId: connection.environmentId,
@@ -1509,6 +1521,10 @@ function reconnectEnvironmentConnectionsAfterBrowserResume(reason: string): void
         error: error instanceof Error ? error.message : String(error),
       });
     });
+  }
+
+  if (didScheduleReconnect) {
+    lastBrowserResumeReconnectAt = now;
   }
 }
 
@@ -1531,7 +1547,9 @@ function subscribeBrowserResumeReconnects(): () => void {
   const handlePageShow = (event: PageTransitionEvent) => {
     if (event.persisted || lastBrowserHiddenAt !== null) {
       lastBrowserHiddenAt = null;
-      reconnectEnvironmentConnectionsAfterBrowserResume("pageshow");
+      reconnectEnvironmentConnectionsAfterBrowserResume("pageshow", {
+        force: event.persisted,
+      });
     }
   };
 
