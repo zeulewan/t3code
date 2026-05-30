@@ -13,7 +13,9 @@ import {
   TurnId,
 } from "@t3tools/contracts";
 import { getModelSelectionBooleanOptionValue } from "@t3tools/shared/model";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as Cause from "effect/Cause";
+import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -361,8 +363,13 @@ export const importCodexSession = Effect.fn("importCodexSession")(function* (
   const orchestration = yield* OrchestrationEngineService;
   const providerService = yield* ProviderService;
   const thread = imported.readResponse.thread;
-  const threadId = ThreadId.make(crypto.randomUUID());
-  const importId = crypto.randomUUID();
+  const randomUUIDv4 = Crypto.Crypto.pipe(
+    Effect.flatMap((crypto) => crypto.randomUUIDv4),
+    Effect.mapError((cause) => toCodexSessionError("Generate Codex import identifiers", cause)),
+    Effect.provide(NodeCrypto.layer),
+  );
+  const threadId = ThreadId.make(yield* randomUUIDv4);
+  const importId = yield* randomUUIDv4;
   const now = DateTime.formatIso(yield* DateTime.now);
   const createdAt = unixSecondsToIso(thread.createdAt, now);
   const title = imported.title;
@@ -370,7 +377,7 @@ export const importCodexSession = Effect.fn("importCodexSession")(function* (
   yield* orchestration
     .dispatch({
       type: "thread.create",
-      commandId: CommandId.make(`codex-import-thread:${crypto.randomUUID()}`),
+      commandId: CommandId.make(`codex-import-thread:${yield* randomUUIDv4}`),
       threadId,
       projectId: input.projectId,
       title,
@@ -388,7 +395,7 @@ export const importCodexSession = Effect.fn("importCodexSession")(function* (
     yield* orchestration
       .dispatch({
         type: "thread.message.import",
-        commandId: CommandId.make(`codex-import-message:${crypto.randomUUID()}`),
+        commandId: CommandId.make(`codex-import-message:${yield* randomUUIDv4}`),
         threadId,
         message: {
           messageId: MessageId.make(`codex-import:${importId}:${index}`),
@@ -418,7 +425,7 @@ export const importCodexSession = Effect.fn("importCodexSession")(function* (
   yield* orchestration
     .dispatch({
       type: "thread.session.set",
-      commandId: CommandId.make(`codex-import-session:${crypto.randomUUID()}`),
+      commandId: CommandId.make(`codex-import-session:${yield* randomUUIDv4}`),
       threadId,
       session: {
         threadId,

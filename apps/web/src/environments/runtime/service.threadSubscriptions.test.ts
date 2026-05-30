@@ -122,7 +122,6 @@ vi.mock("@t3tools/client-runtime", async (importOriginal) => {
       removeWorktree: vi.fn(),
       createRef: vi.fn(),
       switchRef: vi.fn(),
-      init: vi.fn(),
     },
     git: {
       runStackedAction: vi.fn(),
@@ -141,6 +140,8 @@ vi.mock("@t3tools/client-runtime", async (importOriginal) => {
       removeKeybinding: vi.fn(),
       getSettings: vi.fn(),
       updateSettings: vi.fn(),
+      listCodexSessions: vi.fn(),
+      importCodexSession: vi.fn(),
       subscribeConfig: vi.fn(() => () => undefined),
       subscribeLifecycle: vi.fn(() => () => undefined),
       subscribeAuthAccess: vi.fn(() => () => undefined),

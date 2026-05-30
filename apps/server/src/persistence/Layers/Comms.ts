@@ -17,6 +17,8 @@ import {
   type CommsConversationKind,
   type CommsMetadata,
 } from "@t3tools/contracts";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -66,11 +68,6 @@ const ProjectionThreadActorSourceRow = Schema.Struct({
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
-const makeActorId = () => CommsActorId.make(crypto.randomUUID());
-const makeConversationId = () => CommsConversationId.make(crypto.randomUUID());
-const makeMessageId = () => CommsMessageId.make(crypto.randomUUID());
-const makeDeliveryId = () => CommsDeliveryId.make(crypto.randomUUID());
-
 const normalizeMetadata = (metadata: CommsMetadata | undefined) => metadata ?? {};
 
 function deriveConversationKind(recipientCount: number): CommsConversationKind {
@@ -79,6 +76,12 @@ function deriveConversationKind(recipientCount: number): CommsConversationKind {
 
 const makeCommsRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
+  const crypto = yield* Crypto.Crypto;
+  const randomUUIDv4 = crypto.randomUUIDv4;
+  const makeActorId = randomUUIDv4.pipe(Effect.map(CommsActorId.make));
+  const makeConversationId = randomUUIDv4.pipe(Effect.map(CommsConversationId.make));
+  const makeMessageId = randomUUIDv4.pipe(Effect.map(CommsMessageId.make));
+  const makeDeliveryId = randomUUIDv4.pipe(Effect.map(CommsDeliveryId.make));
 
   const upsertActorRow = SqlSchema.findOne({
     Request: CommsActor,
@@ -782,8 +785,9 @@ const makeCommsRepository = Effect.gen(function* () {
       const existingActor =
         Option.getOrNull(existingByThread) ??
         (isThreadBackedAgent ? null : Option.getOrNull(existingByHandle));
+      const actorId = input.actorId ?? existingActor?.actorId ?? (yield* makeActorId);
       const actor: CommsActor = {
-        actorId: input.actorId ?? existingActor?.actorId ?? makeActorId(),
+        actorId,
         kind: input.kind,
         handle: isThreadBackedAgent ? `thread-${input.threadId}` : input.handle,
         displayName: input.displayName ?? existingActor?.displayName ?? input.handle,
@@ -875,7 +879,7 @@ const makeCommsRepository = Effect.gen(function* () {
   const sendMessage: CommsRepositoryShape["sendMessage"] = (input) =>
     Effect.gen(function* () {
       const now = yield* nowIso;
-      const conversationId = input.conversationId ?? makeConversationId();
+      const conversationId = input.conversationId ?? (yield* makeConversationId);
       const existingConversation = yield* getConversationById({ conversationId });
       const conversation =
         Option.getOrNull(existingConversation) ??
@@ -906,7 +910,7 @@ const makeCommsRepository = Effect.gen(function* () {
       );
 
       const message = yield* insertMessage({
-        messageId: input.messageId ?? makeMessageId(),
+        messageId: input.messageId ?? (yield* makeMessageId),
         conversationId,
         senderActorId: input.senderActorId,
         messageType: input.messageType,
@@ -920,7 +924,7 @@ const makeCommsRepository = Effect.gen(function* () {
           Effect.gen(function* () {
             const recipient = yield* getActorByIdRow({ actorId: recipientActorId });
             return yield* insertDelivery({
-              deliveryId: makeDeliveryId(),
+              deliveryId: yield* makeDeliveryId,
               messageId: message.messageId,
               recipientActorId,
               targetThreadId: Option.getOrNull(recipient)?.threadId ?? null,
@@ -998,4 +1002,6 @@ const makeCommsRepository = Effect.gen(function* () {
   } satisfies CommsRepositoryShape;
 });
 
-export const CommsRepositoryLive = Layer.effect(CommsRepository, makeCommsRepository);
+export const CommsRepositoryLive = Layer.effect(CommsRepository, makeCommsRepository).pipe(
+  Layer.provide(NodeCrypto.layer),
+);

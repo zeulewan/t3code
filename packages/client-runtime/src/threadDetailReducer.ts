@@ -1,6 +1,7 @@
 import { pipe } from "effect/Function";
 import * as Arr from "effect/Array";
 import * as O from "effect/Order";
+import { DEFAULT_THREAD_IDENTITY } from "@t3tools/contracts";
 import type {
   MessageId,
   OrchestrationCheckpointSummary,
@@ -81,6 +82,7 @@ export function applyThreadDetailEvent(
           id: event.payload.threadId,
           projectId: event.payload.projectId,
           title: event.payload.title,
+          identity: event.payload.identity ?? DEFAULT_THREAD_IDENTITY,
           modelSelection: event.payload.modelSelection,
           runtimeMode: event.payload.runtimeMode,
           interactionMode: event.payload.interactionMode,

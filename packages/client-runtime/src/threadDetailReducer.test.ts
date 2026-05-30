@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CheckpointRef,
+  DEFAULT_THREAD_IDENTITY,
   EventId,
   MessageId,
   ProjectId,
@@ -25,6 +26,7 @@ const baseThread: OrchestrationThread = {
   id: ThreadId.make("thread-1"),
   projectId: ProjectId.make("project-1"),
   title: "Test Thread",
+  identity: DEFAULT_THREAD_IDENTITY,
   modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
   runtimeMode: "full-access",
   interactionMode: "default",

@@ -16,7 +16,9 @@ import {
   type OrchestrationThread,
 } from "@t3tools/contracts";
 import Mime from "@effect/platform-node/Mime";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -94,9 +96,13 @@ const developerOverrideFlag = Flag.boolean("developer-override").pipe(
 );
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-const newCommandId = () => CommandId.make(crypto.randomUUID());
-const newMessageId = () => MessageId.make(crypto.randomUUID());
-const newThreadId = () => ThreadId.make(crypto.randomUUID());
+const randomUUIDv4 = Crypto.Crypto.pipe(
+  Effect.flatMap((crypto) => crypto.randomUUIDv4),
+  Effect.provide(NodeCrypto.layer),
+);
+const newCommandId = randomUUIDv4.pipe(Effect.map(CommandId.make));
+const newMessageId = randomUUIDv4.pipe(Effect.map(MessageId.make));
+const newThreadId = randomUUIDv4.pipe(Effect.map(ThreadId.make));
 
 function modelSelection(input: {
   readonly provider: string;
@@ -416,7 +422,7 @@ const agentSpawnCommand = Command.make("spawn", {
         yield* requireLiveServer(context.mode, "Agent spawn");
         const project = resolveProject(context.snapshot, flags.project);
         const createdAt = yield* nowIso;
-        const threadId = newThreadId();
+        const threadId = yield* newThreadId;
         const selection = modelSelection({
           provider: flags.provider,
           model: flags.model,
@@ -438,7 +444,7 @@ const agentSpawnCommand = Command.make("spawn", {
 
         yield* context.dispatch({
           type: "thread.create",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId,
           projectId: project.id,
           title: flags.name,
@@ -452,10 +458,10 @@ const agentSpawnCommand = Command.make("spawn", {
 
         yield* context.dispatch({
           type: "thread.turn.start",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId,
           message: {
-            messageId: newMessageId(),
+            messageId: yield* newMessageId,
             role: "user",
             text: initialMessage,
             attachments: [],
@@ -514,10 +520,10 @@ const agentSendCommand = Command.make("send", {
 
         yield* context.dispatch({
           type: "thread.turn.start",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId: thread.id,
           message: {
-            messageId: newMessageId(),
+            messageId: yield* newMessageId,
             role: "user",
             text: flags.message,
             attachments,
@@ -556,10 +562,10 @@ const agentPostCommand = Command.make("post", {
 
         yield* context.dispatch({
           type: "thread.message.import",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId: thread.id,
           message: {
-            messageId: newMessageId(),
+            messageId: yield* newMessageId,
             role: "assistant",
             text: flags.message,
             ...(attachments.length > 0 ? { attachments } : {}),
@@ -589,7 +595,7 @@ const agentStopCommand = Command.make("stop", {
         const thread = yield* resolveThread(context, flags.thread);
         yield* context.dispatch({
           type: "thread.session.stop",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId: thread.id,
           createdAt: yield* nowIso,
         });
@@ -614,7 +620,7 @@ const agentRenameCommand = Command.make("rename", {
         const thread = yield* resolveThread(context, flags.thread);
         yield* context.dispatch({
           type: "thread.meta.update",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId: thread.id,
           title: flags.title,
         });
@@ -643,7 +649,7 @@ const agentModelCommand = Command.make("model", {
         });
         yield* context.dispatch({
           type: "thread.meta.update",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId: thread.id,
           modelSelection: selection,
         });

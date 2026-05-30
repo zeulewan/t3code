@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   EventId,
+  DEFAULT_THREAD_IDENTITY,
   EnvironmentId,
   MessageId,
   ProjectId,
@@ -41,6 +42,7 @@ const BASE_THREAD: OrchestrationThread = {
   id: ThreadId.make("thread-1"),
   projectId: ProjectId.make("project-1"),
   title: "Test Thread",
+  identity: DEFAULT_THREAD_IDENTITY,
   modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
   runtimeMode: "full-access",
   interactionMode: "default",

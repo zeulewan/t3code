@@ -97,6 +97,15 @@ const withRemovedProcessEnv = <A, E, R>(
 const withClearedCommsSenderEnv = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   withRemovedProcessEnv([T3_THREAD_ID_ENV, ...T3_COMMS_HANDLE_FALLBACK_ENVS], effect);
 
+const withThreadCommsEnv = <A, E, R>(
+  threadId: string,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> =>
+  withRemovedProcessEnv(
+    T3_COMMS_HANDLE_FALLBACK_ENVS,
+    withProcessEnv(T3_THREAD_ID_ENV, threadId, effect),
+  );
+
 const captureStdout = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
     const result = yield* effect;
@@ -518,8 +527,7 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
           assert.isTrue(renamedActorsOutput.output.includes("@renamed-agent"));
           assert.isFalse(renamedActorsOutput.output.includes("@test-agent"));
 
-          const agentSendFromAgentSessionError = yield* withProcessEnv(
-            T3_THREAD_ID_ENV,
+          const agentSendFromAgentSessionError = yield* withThreadCommsEnv(
             thread?.id ?? "",
             runCliWithRuntime([
               "agent",
@@ -541,8 +549,7 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
           assert.isTrue(sendOutput.output.includes(`Sent turn to ${thread?.id}.`));
 
           yield* runCliWithRuntime(["comms", "register", "receiver", "--base-dir", baseDir]);
-          const commsOutput = yield* withProcessEnv(
-            T3_THREAD_ID_ENV,
+          const commsOutput = yield* withThreadCommsEnv(
             thread?.id ?? "",
             captureStdout(
               runCli([
@@ -564,8 +571,7 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
           assert.isTrue(autodetectedInboxOutput.output.includes("@renamed-agent"));
           assert.isTrue(autodetectedInboxOutput.output.includes("Hello from autodetected thread."));
 
-          const whoamiOutput = yield* withProcessEnv(
-            T3_THREAD_ID_ENV,
+          const whoamiOutput = yield* withThreadCommsEnv(
             thread?.id ?? "",
             captureStdout(runCli(["comms", "whoami", "--base-dir", baseDir])),
           );

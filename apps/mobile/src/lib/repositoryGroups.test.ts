@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import {
+  DEFAULT_THREAD_IDENTITY,
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+} from "@t3tools/contracts";
 
 import { groupProjectsByRepository } from "./repositoryGroups";
 import {
@@ -33,6 +39,7 @@ function makeThread(
   return {
     runtimeMode: "full-access",
     interactionMode: "default",
+    identity: DEFAULT_THREAD_IDENTITY,
     branch: null,
     worktreePath: null,
     latestTurn: null,

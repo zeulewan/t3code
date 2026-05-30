@@ -64,6 +64,7 @@ interface GitRunStackedActionOptions {
 
 export interface WsRpcClient {
   readonly dispose: () => Promise<void>;
+  readonly isHeartbeatFresh: (maxAgeMs?: number) => boolean;
   readonly reconnect: () => Promise<void>;
   readonly terminal: {
     readonly open: RpcUnaryMethod<typeof WS_METHODS.terminalOpen>;
@@ -173,7 +174,7 @@ export function createWsRpcClient(
 ): WsRpcClient {
   return {
     dispose: () => transport.dispose(),
-    isHeartbeatFresh: () => transport.isHeartbeatFresh(),
+    isHeartbeatFresh: (maxAgeMs) => transport.isHeartbeatFresh(maxAgeMs),
     reconnect: async () => {
       options?.beforeReconnect?.();
       await transport.reconnect();

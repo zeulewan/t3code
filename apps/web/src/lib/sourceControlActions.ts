@@ -36,7 +36,6 @@ import { getVcsStatusSnapshot, refreshVcsStatus } from "./vcsStatusState";
 import { vcsRefManager } from "./vcsRefState";
 
 type SourceControlActionKind =
-  | "init"
   | "pull"
   | "publishRepository"
   | "runStackedAction"
@@ -111,8 +110,6 @@ function isAnyActionRunning(
 
 function getVcsActionOperationForKind(kind: SourceControlActionKind): VcsActionOperation | null {
   switch (kind) {
-    case "init":
-      return "init";
     case "pull":
       return "pull";
     case "runStackedAction":

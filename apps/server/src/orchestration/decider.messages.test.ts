@@ -7,6 +7,7 @@ import {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vitest";
 
@@ -101,7 +102,7 @@ describe("decider message flows", () => {
           createdAt,
         },
         readModel,
-      }),
+      }).pipe(Effect.provide(NodeCrypto.layer)),
     );
     const event = Array.isArray(result) ? result[0] : result;
 

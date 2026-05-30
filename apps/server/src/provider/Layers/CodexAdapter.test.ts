@@ -36,6 +36,7 @@ import * as CodexErrors from "effect-codex-app-server/errors";
 
 import { ServerConfig } from "../../config.ts";
 import { attachmentRelativePath } from "../../attachmentStore.ts";
+import { T3_COMMS_HANDLE_ENV, T3_THREAD_ID_ENV } from "../../commsEnvironment.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderAdapterValidationError } from "../Errors.ts";
 import type { CodexAdapterShape } from "../Services/CodexAdapter.ts";
@@ -289,16 +290,33 @@ validationLayer("CodexAdapterLive validation", (it) => {
         runtimeMode: "full-access",
       });
 
-      assert.deepStrictEqual(validationRuntimeFactory.factory.mock.calls[0]?.[0], {
-        binaryPath: "codex",
-        cwd: process.cwd(),
-        model: "gpt-5.3-codex",
-        providerInstanceId: ProviderInstanceId.make("codex"),
-        serviceTier: "fast",
-        title: "River",
-        threadId: asThreadId("thread-1"),
-        runtimeMode: "full-access",
-      });
+      const runtimeOptions = validationRuntimeFactory.factory.mock.calls[0]?.[0];
+      assert.deepStrictEqual(
+        runtimeOptions
+          ? {
+              binaryPath: runtimeOptions.binaryPath,
+              cwd: runtimeOptions.cwd,
+              model: runtimeOptions.model,
+              providerInstanceId: runtimeOptions.providerInstanceId,
+              serviceTier: runtimeOptions.serviceTier,
+              title: runtimeOptions.title,
+              threadId: runtimeOptions.threadId,
+              runtimeMode: runtimeOptions.runtimeMode,
+            }
+          : undefined,
+        {
+          binaryPath: "codex",
+          cwd: process.cwd(),
+          model: "gpt-5.3-codex",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          serviceTier: "fast",
+          title: "River",
+          threadId: asThreadId("thread-1"),
+          runtimeMode: "full-access",
+        },
+      );
+      assert.equal(runtimeOptions?.environment?.[T3_THREAD_ID_ENV], "thread-1");
+      assert.equal(runtimeOptions?.environment?.[T3_COMMS_HANDLE_ENV], "river");
     }),
   );
 });

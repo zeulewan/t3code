@@ -1202,18 +1202,15 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
         const tamperedCookieHeader = `${cookieName}=${cookieValue.slice(0, -1)}${cookieValue.at(-1) === "a" ? "b" : "a"}`;
 
-        const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
-        const sessionResponse = yield* Effect.promise(() =>
-          fetch(sessionUrl, {
-            headers: {
-              cookie: tamperedCookieHeader,
-            },
-          }),
-        );
-        const sessionBody = (yield* Effect.promise(() => sessionResponse.json())) as {
+        const sessionResponse = yield* HttpClient.get("/api/auth/session", {
+          headers: {
+            cookie: tamperedCookieHeader,
+          },
+        });
+        const sessionBody = (yield* sessionResponse.json) as {
           readonly authenticated: boolean;
         };
-        const clearedCookie = sessionResponse.headers.get("set-cookie");
+        const clearedCookie = Cookies.toSetCookieHeaders(sessionResponse.cookies)[0] ?? null;
 
         assert.equal(sessionResponse.status, 200);
         assert.equal(sessionBody.authenticated, false);

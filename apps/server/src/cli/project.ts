@@ -508,7 +508,7 @@ const projectRelocateCommand = Command.make("relocate", {
 
         yield* dispatch({
           type: "project.meta.update",
-          commandId: CommandId.make(crypto.randomUUID()),
+          commandId: CommandId.make(yield* projectCommandUuid),
           projectId: project.id,
           workspaceRoot: nextWorkspaceRoot,
         });
