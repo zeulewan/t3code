@@ -11,7 +11,7 @@ import {
 import {
   buildAgentThreadTitle,
   chooseNextThreadIdentity,
-  countProjectThreadsUsingIdentity,
+  countThreadsUsingIdentity,
 } from "@t3tools/shared/threadIdentity";
 import { useParams, useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
@@ -176,24 +176,12 @@ export function useNewThreadHandler() {
       const threadId = newThreadId();
       const createdAt = new Date().toISOString();
       const initialEnvMode = options?.envMode ?? environmentSettings.defaultThreadEnvMode;
-      const identityCandidates = [
-        ...sidebarThreads.filter(
-          (thread) =>
-            thread.environmentId === projectRef.environmentId &&
-            thread.projectId === projectRef.projectId,
-        ),
-        ...draftThreads.filter(
-          (thread) =>
-            thread.environmentId === projectRef.environmentId &&
-            thread.projectId === projectRef.projectId,
-        ),
-      ];
-      const identity = chooseNextThreadIdentity(projectRef.projectId, identityCandidates);
+      const identityCandidates = [...sidebarThreads, ...draftThreads];
+      const identity = chooseNextThreadIdentity(identityCandidates);
       const title = agentIdentityModeEnabled
         ? buildAgentThreadTitle({
             identity,
-            existingSamePresetCount: countProjectThreadsUsingIdentity({
-              projectId: projectRef.projectId,
+            existingSamePresetCount: countThreadsUsingIdentity({
               identity,
               threads: identityCandidates,
             }),

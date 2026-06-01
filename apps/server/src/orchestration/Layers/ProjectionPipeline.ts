@@ -596,16 +596,14 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     )(function* (event, attachmentSideEffects) {
       switch (event.type) {
         case "thread.created": {
-          const projectThreads = yield* projectionThreadRepository.listByProjectId({
-            projectId: event.payload.projectId,
-          });
+          const identity =
+            event.payload.identity ??
+            chooseNextThreadIdentity(yield* projectionThreadRepository.listAll());
           yield* projectionThreadRepository.upsert({
             threadId: event.payload.threadId,
             projectId: event.payload.projectId,
             title: event.payload.title,
-            identity:
-              event.payload.identity ??
-              chooseNextThreadIdentity(event.payload.projectId, projectThreads),
+            identity,
             modelSelection: event.payload.modelSelection,
             runtimeMode: event.payload.runtimeMode,
             interactionMode: event.payload.interactionMode,

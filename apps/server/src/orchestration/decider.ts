@@ -235,12 +235,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           threadId: command.threadId,
           projectId: command.projectId,
           title: command.title,
-          identity:
-            command.identity ??
-            chooseNextThreadIdentity(
-              command.projectId,
-              listThreadsByProjectId(readModel, command.projectId),
-            ),
+          identity: command.identity ?? chooseNextThreadIdentity(readModel.threads),
           modelSelection: command.modelSelection,
           runtimeMode: command.runtimeMode,
           interactionMode: command.interactionMode,

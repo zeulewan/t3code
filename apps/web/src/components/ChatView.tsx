@@ -43,7 +43,7 @@ import { nextTerminalId, resolveTerminalSessionLabel } from "@t3tools/shared/ter
 import {
   buildAgentThreadTitle,
   chooseNextThreadIdentity,
-  countProjectThreadsUsingIdentity,
+  countThreadsUsingIdentity,
 } from "@t3tools/shared/threadIdentity";
 import { Debouncer } from "@tanstack/react-pacer";
 import { useAtomValue } from "@effect/atom-react";
@@ -4405,24 +4405,12 @@ function ChatViewContent(props: ChatViewProps) {
       effort: ctxSelectedPromptEffort,
       text: implementationPrompt,
     });
-    const identityCandidates = [
-      ...sidebarThreads.filter(
-        (thread) =>
-          thread.environmentId === activeThread.environmentId &&
-          thread.projectId === activeProject.id,
-      ),
-      ...Object.values(draftThreadsByThreadKey).filter(
-        (thread) =>
-          thread.environmentId === activeThread.environmentId &&
-          thread.projectId === activeProject.id,
-      ),
-    ];
-    const nextThreadIdentity = chooseNextThreadIdentity(activeProject.id, identityCandidates);
+    const identityCandidates = [...sidebarThreads, ...Object.values(draftThreadsByThreadKey)];
+    const nextThreadIdentity = chooseNextThreadIdentity(identityCandidates);
     const nextThreadTitle = agentIdentityModeEnabled
       ? buildAgentThreadTitle({
           identity: nextThreadIdentity,
-          existingSamePresetCount: countProjectThreadsUsingIdentity({
-            projectId: activeProject.id,
+          existingSamePresetCount: countThreadsUsingIdentity({
             identity: nextThreadIdentity,
             threads: identityCandidates,
           }),

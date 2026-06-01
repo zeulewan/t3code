@@ -278,8 +278,7 @@ export function projectEvent(
             id: payload.threadId,
             projectId: payload.projectId,
             title: payload.title,
-            identity:
-              payload.identity ?? chooseNextThreadIdentity(payload.projectId, nextBase.threads),
+            identity: payload.identity ?? chooseNextThreadIdentity(nextBase.threads),
             modelSelection: payload.modelSelection,
             runtimeMode: payload.runtimeMode,
             interactionMode: payload.interactionMode,

@@ -1,6 +1,5 @@
 import {
   DEFAULT_THREAD_IDENTITY,
-  type ProjectId,
   type ThreadIdentity,
   type ThreadIdentityPreset,
 } from "@t3tools/contracts";
@@ -30,25 +29,30 @@ export function normalizeThreadIdentity(
 }
 
 export interface ThreadIdentityAssignmentCandidate {
-  readonly projectId: ProjectId;
   readonly deletedAt?: string | null | undefined;
   readonly identity?: ThreadIdentity | null | undefined;
 }
 
 export function chooseNextThreadIdentity(
-  projectId: ProjectId,
   threads: ReadonlyArray<ThreadIdentityAssignmentCandidate>,
 ): ThreadIdentity {
   const counts = new Map<ThreadIdentityPreset, number>(
     THREAD_IDENTITY_PRESETS.map((preset) => [preset.preset, 0]),
   );
+  const usedIcons = new Set<ThreadIdentity["icon"]>();
 
   for (const thread of threads) {
-    if (thread.projectId !== projectId || thread.deletedAt != null) {
+    if (thread.deletedAt != null) {
       continue;
     }
     const identity = normalizeThreadIdentity(thread.identity);
+    usedIcons.add(identity.icon);
     counts.set(identity.preset, (counts.get(identity.preset) ?? 0) + 1);
+  }
+
+  const unusedIconPreset = THREAD_IDENTITY_PRESETS.find((preset) => !usedIcons.has(preset.icon));
+  if (unusedIconPreset) {
+    return unusedIconPreset;
   }
 
   let selected: ThreadIdentity = THREAD_IDENTITY_PRESETS[0]!;
@@ -63,14 +67,12 @@ export function chooseNextThreadIdentity(
   return selected;
 }
 
-export function countProjectThreadsUsingIdentity(input: {
-  readonly projectId: ProjectId;
+export function countThreadsUsingIdentity(input: {
   readonly identity: ThreadIdentity;
   readonly threads: ReadonlyArray<ThreadIdentityAssignmentCandidate>;
 }): number {
   return input.threads.filter(
     (thread) =>
-      thread.projectId === input.projectId &&
       thread.deletedAt == null &&
       normalizeThreadIdentity(thread.identity).preset === input.identity.preset,
   ).length;
