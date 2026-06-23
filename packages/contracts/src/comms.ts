@@ -177,5 +177,5 @@ export type CommsSetDeliveryStatusInput = typeof CommsSetDeliveryStatusInput.Typ
 
 export class CommsError extends Schema.TaggedErrorClass<CommsError>()("CommsError", {
   message: TrimmedNonEmptyString,
-  cause: Schema.optional(Schema.Defect),
+  cause: Schema.optional(Schema.Defect()),
 }) {}

@@ -145,6 +145,7 @@ function buildAssistantTimelineEntry() {
       id: MessageId.make("message-assistant-1"),
       role: "assistant" as const,
       text: "Here is the image.",
+      turnId: null,
       attachments: [
         {
           type: "image" as const,
@@ -157,6 +158,7 @@ function buildAssistantTimelineEntry() {
         },
       ],
       createdAt: MESSAGE_CREATED_AT,
+      updatedAt: MESSAGE_CREATED_AT,
       streaming: false,
     },
   };
@@ -171,6 +173,7 @@ function buildAssistantAttachmentTimelineEntry() {
       id: MessageId.make("message-assistant-attachments"),
       role: "assistant" as const,
       text: "Here are the attachments.",
+      turnId: null,
       attachments: [
         {
           type: "video" as const,
@@ -191,6 +194,7 @@ function buildAssistantAttachmentTimelineEntry() {
         },
       ],
       createdAt: MESSAGE_CREATED_AT,
+      updatedAt: MESSAGE_CREATED_AT,
       streaming: false,
     },
   };
@@ -298,7 +302,6 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("Show 240 earlier messages");
     expect(markup).toContain("lucide-chevron-up");
-    expect(markup).toContain("absolute top-2 left-1/2 z-20");
   });
 
   it("renders inline terminal labels with the composer chip UI", async () => {

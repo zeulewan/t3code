@@ -1400,6 +1400,9 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           environment: withCommsSessionEnvironment(options?.environment, {
             threadId: input.threadId,
             title: input.title,
+            baseDir: serverConfig.baseDir,
+            stateDir: serverConfig.stateDir,
+            devUrl: serverConfig.devUrl,
           }),
           ...(codexConfig.homePath ? { homePath: codexConfig.homePath } : {}),
           ...(isCodexResumeCursorSchema(input.resumeCursor)

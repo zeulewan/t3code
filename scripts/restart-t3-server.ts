@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off globalTimers:off
-import { spawn } from "node:child_process";
-import { appendFile, mkdir, readFile } from "node:fs/promises";
-import { closeSync, openSync } from "node:fs";
-import * as Net from "node:net";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeFS from "node:fs";
+import * as NodeNet from "node:net";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
@@ -226,8 +226,8 @@ async function main(): Promise<void> {
 }
 
 async function startRestartWorker(options: RestartOptions, logFile: string): Promise<void> {
-  await mkdir(NodePath.dirname(logFile), { recursive: true });
-  await appendFile(
+  await NodeFSP.mkdir(NodePath.dirname(logFile), { recursive: true });
+  await NodeFSP.appendFile(
     logFile,
     `\n\n[${new Date().toISOString()}] Scheduling detached T3 restart worker.\n`,
   );
@@ -242,9 +242,9 @@ async function startRestartWorker(options: RestartOptions, logFile: string): Pro
     .filter((arg) => arg !== "--worker")
     .concat("--worker");
 
-  const logFd = openSync(logFile, "a");
+  const logFd = NodeFS.openSync(logFile, "a");
   try {
-    const child = spawn(process.execPath, [scriptPath, ...workerArgs], {
+    const child = NodeChildProcess.spawn(process.execPath, [scriptPath, ...workerArgs], {
       cwd: options.cwd,
       detached: true,
       env: process.env,
@@ -254,7 +254,7 @@ async function startRestartWorker(options: RestartOptions, logFile: string): Pro
     console.log(`Scheduled detached restart worker pid ${child.pid ?? "unknown"}.`);
     console.log(`Follow restart progress in ${logFile}.`);
   } finally {
-    closeSync(logFd);
+    NodeFS.closeSync(logFd);
   }
 }
 
@@ -306,7 +306,7 @@ async function readRuntimeStateOrUndefined(path: string): Promise<ServerRuntimeS
 }
 
 async function readRuntimeState(path: string): Promise<ServerRuntimeState> {
-  const raw = await readFile(path, "utf8");
+  const raw = await NodeFSP.readFile(path, "utf8");
   const decoded = JSON.parse(raw) as Partial<ServerRuntimeState>;
   if (
     decoded.version !== 1 ||
@@ -322,7 +322,7 @@ async function readRuntimeState(path: string): Promise<ServerRuntimeState> {
 
 async function readProcessCommand(pid: number): Promise<Array<string>> {
   try {
-    const raw = await readFile(`/proc/${pid}/cmdline`);
+    const raw = await NodeFSP.readFile(`/proc/${pid}/cmdline`);
     return raw.toString("utf8").split("\0").filter(Boolean);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
@@ -423,15 +423,15 @@ async function startServer(
   cwd: string,
   logFile: string,
 ): Promise<void> {
-  await mkdir(NodePath.dirname(logFile), { recursive: true });
-  await appendFile(
+  await NodeFSP.mkdir(NodePath.dirname(logFile), { recursive: true });
+  await NodeFSP.appendFile(
     logFile,
     `\n\n[${new Date().toISOString()}] Restarting T3 server: ${formatCommand(command)}\n`,
   );
 
-  const logFd = openSync(logFile, "a");
+  const logFd = NodeFS.openSync(logFile, "a");
   try {
-    const child = spawn(command[0]!, command.slice(1), {
+    const child = NodeChildProcess.spawn(command[0]!, command.slice(1), {
       cwd,
       detached: true,
       env: process.env,
@@ -440,7 +440,7 @@ async function startServer(
     child.unref();
     console.log(`Started replacement T3 server pid ${child.pid ?? "unknown"}.`);
   } finally {
-    closeSync(logFd);
+    NodeFS.closeSync(logFd);
   }
 }
 
@@ -477,7 +477,7 @@ async function waitForPortOpen(host: string, port: number, timeoutMs: number): P
 
 async function canConnect(host: string, port: number): Promise<boolean> {
   return await new Promise((resolve) => {
-    const socket = Net.createConnection({ host, port });
+    const socket = NodeNet.createConnection({ host, port });
     const finish = (value: boolean): void => {
       socket.removeAllListeners();
       socket.destroy();

@@ -15,16 +15,38 @@ From the repo root, use the source CLI unless the installed `t3` binary is expli
 node apps/server/src/bin.ts --log-level error <command>
 ```
 
-For this local workspace, most commands should include:
+If this skill is loaded inside a T3 agent session, prefer the `T3 agent comms:` command template
+that was injected into the thread at spawn time. That template contains the correct runtime flags
+for the current server. If it includes `--dev-url`, keep that flag for `comms actors`, `comms
+register`, `comms inbox`, and `comms send`; otherwise you will query or message the wrong
+prod/dev database.
+
+Inside a T3 agent session, runtime environment variables may also be set:
 
 ```sh
---base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
+$T3_RUNTIME      # prod or dev
+$T3_BASE_DIR     # base directory for CLI state
+$T3_STATE_DIR    # resolved state directory, e.g. /home/zeul/.t3/userdata or /home/zeul/.t3/dev
+$T3_DEV_URL      # present only for dev runtimes
+$T3_COMMS_FLAGS  # ready-to-append flags for comms commands
 ```
+
+When `$T3_COMMS_FLAGS` is present, use it instead of reconstructing `--base-dir`/`--dev-url`.
+
+For examples below, replace `<runtime-flags>` with the exact flags for the runtime you are
+operating:
+
+```sh
+--base-dir /home/zeul/.t3
+```
+
+For dev previews, use the injected command template or the preview's matching `--dev-url`; do not
+hardcode the production URL/port.
 
 Full pattern:
 
 ```sh
-node apps/server/src/bin.ts --log-level error <command> --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
+node apps/server/src/bin.ts --log-level error <command> <runtime-flags>
 ```
 
 ## Browser Connection
@@ -105,19 +127,22 @@ Comms handles are written without `@` in commands. Examples: `joe`, `bob`, `rive
 List active comms actors:
 
 ```sh
-node apps/server/src/bin.ts --log-level error comms actors --project t3code --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
+node apps/server/src/bin.ts --log-level error comms actors <runtime-flags>
 ```
+
+Do not add `--project` unless the user explicitly named the project or the injected runtime
+context makes it unambiguous. Dev previews often use different project titles than prod.
 
 Register or update an actor:
 
 ```sh
-node apps/server/src/bin.ts --log-level error comms register <handle> --kind agent --thread <thread-id> --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
+node apps/server/src/bin.ts --log-level error comms register <handle> --kind agent --thread <thread-id> <runtime-flags>
 ```
 
 Send a direct interruptive message from inside an agent session:
 
 ```sh
-node apps/server/src/bin.ts --log-level error comms send <target-handle> '<message>' --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733 --type direct
+node apps/server/src/bin.ts --log-level error comms send <target-handle> '<message>' <runtime-flags> --type direct
 ```
 
 The sender is autodetected from `T3_THREAD_ID`, with `T3_COMMS_HANDLE` as a fallback.
@@ -126,13 +151,13 @@ Do not use provider names such as `codex` or `claude` as sender handles; comms s
 If autodetect fails inside an agent session, register the current thread and retry the same target-only command:
 
 ```sh
-node apps/server/src/bin.ts --log-level error comms register <your-handle> --thread "$T3_THREAD_ID" --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
+node apps/server/src/bin.ts --log-level error comms register <your-handle> --thread "$T3_THREAD_ID" <runtime-flags>
 ```
 
 Outside an agent session, the developer-only sender override requires a literal `--developer-override`:
 
 ```sh
-node apps/server/src/bin.ts --log-level error comms send --from <sender-handle> --developer-override <target-handle> '<message>' --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733 --type direct
+node apps/server/src/bin.ts --log-level error comms send --from <sender-handle> --developer-override <target-handle> '<message>' <runtime-flags> --type direct
 ```
 
 Common mistake to avoid:
@@ -148,7 +173,7 @@ node apps/server/src/bin.ts --log-level error comms send codex <target-handle> '
 Read inbox:
 
 ```sh
-node apps/server/src/bin.ts --log-level error comms inbox <handle> --base-dir /home/zeul/.t3 --dev-url http://workstation.tailee9084.ts.net:5733
+node apps/server/src/bin.ts --log-level error comms inbox <handle> <runtime-flags>
 ```
 
 Delivery types:

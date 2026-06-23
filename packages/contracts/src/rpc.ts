@@ -254,14 +254,6 @@ export const WS_METHODS = {
   sourceControlCloneRepository: "sourceControl.cloneRepository",
   sourceControlPublishRepository: "sourceControl.publishRepository",
 
-  // Agent comms methods
-  commsUpsertActor: "comms.upsertActor",
-  commsListActors: "comms.listActors",
-  commsSendMessage: "comms.sendMessage",
-  commsListInbox: "comms.listInbox",
-  commsListConversationMessages: "comms.listConversationMessages",
-  commsSetDeliveryStatus: "comms.setDeliveryStatus",
-
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
   subscribeTerminalEvents: "subscribeTerminalEvents",

@@ -95,7 +95,7 @@ import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatShortTimestamp } from "../../timestampFormat";
-import { useSettings } from "../../hooks/useSettings";
+import { useClientSettings } from "../../hooks/useSettings";
 
 import {
   buildInlineTerminalContextText,
@@ -1217,7 +1217,7 @@ function AssistantChangedFilesSectionInner({
   resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
-  const defaultExpanded = useSettings((settings) => settings.changedFilesExpandedByDefault);
+  const defaultExpanded = useClientSettings((settings) => settings.changedFilesExpandedByDefault);
   const allDirectoriesExpanded = useUiStateStore(
     (store) =>
       store.threadChangedFilesExpandedById[routeThreadKey]?.[turnSummary.turnId] ?? defaultExpanded,
@@ -1310,7 +1310,7 @@ const UserMessageElementContextChip = memo(function UserMessageElementContextChi
 
 function UserMessagePreviewAnnotationCard(props: {
   annotation: ParsedPreviewAnnotation;
-  image: NonNullable<TimelineMessage["attachments"]>[number] | null;
+  image: ChatAttachment | null;
 }) {
   const ctx = use(TimelineRowCtx);
   return (

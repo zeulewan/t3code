@@ -36,6 +36,14 @@ import * as CodexErrors from "effect-codex-app-server/errors";
 
 import { ServerConfig } from "../../config.ts";
 import { attachmentRelativePath } from "../../attachmentStore.ts";
+import {
+  T3_BASE_DIR_ENV,
+  T3_COMMS_FLAGS_ENV,
+  T3_DEV_URL_ENV,
+  T3_RUNTIME_ENV,
+  T3_STATE_DIR_ENV,
+  T3_THREAD_ID_ENV,
+} from "../../commsEnvironment.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderAdapterValidationError } from "../Errors.ts";
 import type { CodexAdapterShape } from "../Services/CodexAdapter.ts";
@@ -289,16 +297,35 @@ validationLayer("CodexAdapterLive validation", (it) => {
         runtimeMode: "full-access",
       });
 
-      NodeAssert.deepStrictEqual(validationRuntimeFactory.factory.mock.calls[0]?.[0], {
-        binaryPath: "codex",
-        cwd: process.cwd(),
-        model: "gpt-5.3-codex",
-        providerInstanceId: ProviderInstanceId.make("codex"),
-        serviceTier: "priority",
-        title: "River",
-        threadId: asThreadId("thread-1"),
-        runtimeMode: "full-access",
-      });
+      const runtimeOptions = validationRuntimeFactory.factory.mock.calls[0]?.[0];
+      NodeAssert.deepStrictEqual(
+        {
+          binaryPath: runtimeOptions?.binaryPath,
+          cwd: runtimeOptions?.cwd,
+          model: runtimeOptions?.model,
+          providerInstanceId: runtimeOptions?.providerInstanceId,
+          serviceTier: runtimeOptions?.serviceTier,
+          title: runtimeOptions?.title,
+          threadId: runtimeOptions?.threadId,
+          runtimeMode: runtimeOptions?.runtimeMode,
+        },
+        {
+          binaryPath: "codex",
+          cwd: process.cwd(),
+          model: "gpt-5.3-codex",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          serviceTier: "priority",
+          title: "River",
+          threadId: asThreadId("thread-1"),
+          runtimeMode: "full-access",
+        },
+      );
+      NodeAssert.equal(runtimeOptions?.environment?.[T3_THREAD_ID_ENV], "thread-1");
+      NodeAssert.equal(runtimeOptions?.environment?.[T3_RUNTIME_ENV], "prod");
+      NodeAssert.match(runtimeOptions?.environment?.[T3_BASE_DIR_ENV] ?? "", /t3-codex-adapter-/);
+      NodeAssert.match(runtimeOptions?.environment?.[T3_STATE_DIR_ENV] ?? "", /userdata$/);
+      NodeAssert.equal(runtimeOptions?.environment?.[T3_DEV_URL_ENV], undefined);
+      NodeAssert.match(runtimeOptions?.environment?.[T3_COMMS_FLAGS_ENV] ?? "", /--base-dir '/);
     }),
   );
 });
@@ -349,14 +376,14 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
         runtimeMode: "full-access",
       });
       const runtime = sessionRuntimeFactory.lastRuntime;
-      assert.ok(runtime);
+      NodeAssert.ok(runtime);
 
       yield* adapter.setThreadTitle({
         threadId: asThreadId("sess-title"),
         title: "Renamed from T3",
       });
 
-      assert.deepStrictEqual(runtime.setThreadTitleImpl.mock.calls, [["Renamed from T3"]]);
+      NodeAssert.deepStrictEqual(runtime.setThreadTitleImpl.mock.calls, [["Renamed from T3"]]);
     }),
   );
 
@@ -404,9 +431,9 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
         mimeType: "image/svg+xml",
         sizeBytes: 11,
       };
-      const attachmentPath = path.join(attachmentsDir, attachmentRelativePath(attachment));
-      fs.mkdirSync(path.dirname(attachmentPath), { recursive: true });
-      fs.writeFileSync(attachmentPath, "<svg></svg>");
+      const attachmentPath = NodePath.join(attachmentsDir, attachmentRelativePath(attachment));
+      NodeFS.mkdirSync(NodePath.dirname(attachmentPath), { recursive: true });
+      NodeFS.writeFileSync(attachmentPath, "<svg></svg>");
 
       yield* adapter.startSession({
         provider: ProviderDriverKind.make("codex"),
@@ -414,7 +441,7 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
         runtimeMode: "full-access",
       });
       const runtime = sessionRuntimeFactory.lastRuntime;
-      assert.ok(runtime);
+      NodeAssert.ok(runtime);
       runtime.sendTurnImpl.mockClear();
 
       const result = yield* adapter
@@ -425,15 +452,15 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
         })
         .pipe(Effect.result);
 
-      assert.equal(result._tag, "Failure");
-      assert.equal(result.failure._tag, "ProviderAdapterValidationError");
-      assert.equal(result.failure.provider, "codex");
-      assert.equal(result.failure.operation, "sendTurn");
-      assert.match(
+      NodeAssert.equal(result._tag, "Failure");
+      NodeAssert.equal(result.failure._tag, "ProviderAdapterValidationError");
+      NodeAssert.equal(result.failure.provider, "codex");
+      NodeAssert.equal(result.failure.operation, "sendTurn");
+      NodeAssert.match(
         result.failure.issue,
         /Unsupported Codex image attachment type 'image\/svg\+xml'/,
       );
-      assert.equal(runtime.sendTurnImpl.mock.calls.length, 0);
+      NodeAssert.equal(runtime.sendTurnImpl.mock.calls.length, 0);
     }),
   );
 
@@ -1226,7 +1253,7 @@ scopedLifecycleLayer("CodexAdapterLive scoped lifecycle", (it) => {
       }
 
       const runtime = scopedLifecycleRuntimeFactory.lastRuntime;
-      assert.ok(runtime);
+      NodeAssert.ok(runtime);
 
       const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
       yield* runtime.emit({
@@ -1248,16 +1275,16 @@ scopedLifecycleLayer("CodexAdapterLive scoped lifecycle", (it) => {
       } satisfies ProviderEvent);
 
       const result = yield* Fiber.join(firstEventFiber).pipe(Effect.timeoutOption("1 second"));
-      assert.equal(result._tag, "Some");
+      NodeAssert.equal(result._tag, "Some");
       if (result._tag !== "Some") {
         return;
       }
-      assert.equal(result.value._tag, "Some");
+      NodeAssert.equal(result.value._tag, "Some");
       if (result.value._tag !== "Some") {
         return;
       }
-      assert.equal(result.value.value.type, "content.delta");
-      assert.equal(result.value.value.threadId, "thread-event-scope");
+      NodeAssert.equal(result.value.value.type, "content.delta");
+      NodeAssert.equal(result.value.value.threadId, "thread-event-scope");
     }),
   );
 });

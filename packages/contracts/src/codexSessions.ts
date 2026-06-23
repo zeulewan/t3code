@@ -59,6 +59,6 @@ export class CodexSessionError extends Schema.TaggedErrorClass<CodexSessionError
   "CodexSessionError",
   {
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}

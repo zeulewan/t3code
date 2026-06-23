@@ -230,7 +230,6 @@ import {
   revokeUserMessagePreviewUrls,
   shouldAutoTitleServerThreadOnSend,
   shouldTreatSendAsFirstThreadMessage,
-  shouldWriteThreadErrorToCurrentServerThread,
   waitForStartedServerThread,
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -3925,8 +3924,8 @@ function ChatViewContent(props: ChatViewProps) {
           ? {
               ...(isLocalDraftThread
                 ? {
-                  createThread: {
-                    projectId: activeProject.id,
+                    createThread: {
+                      projectId: activeProject.id,
                       title: threadTitleForSend,
                       identity: activeThread.identity,
                       modelSelection: threadCreateModelSelection,

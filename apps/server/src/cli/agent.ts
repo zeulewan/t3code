@@ -17,6 +17,7 @@ import {
 } from "@t3tools/contracts";
 import Mime from "@effect/platform-node/Mime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -94,9 +95,13 @@ const developerOverrideFlag = Flag.boolean("developer-override").pipe(
 );
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-const newCommandId = () => CommandId.make(crypto.randomUUID());
-const newMessageId = () => MessageId.make(crypto.randomUUID());
-const newThreadId = () => ThreadId.make(crypto.randomUUID());
+const randomUuid = Crypto.Crypto.pipe(
+  Effect.flatMap((crypto) => crypto.randomUUIDv4),
+  Effect.provide(NodeServices.layer),
+);
+const newCommandId = randomUuid.pipe(Effect.map(CommandId.make));
+const newMessageId = randomUuid.pipe(Effect.map(MessageId.make));
+const newThreadId = randomUuid.pipe(Effect.map(ThreadId.make));
 
 function modelSelection(input: {
   readonly provider: string;
@@ -183,22 +188,37 @@ function cliCommandPrefix(): string {
   return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
+function commsRuntimeFlags(context: OrchestrationCliContext): ReadonlyArray<string> {
+  const flags = ["--base-dir", shellQuote(context.baseDir)];
+  if (context.devUrl) {
+    flags.push("--dev-url", shellQuote(context.devUrl.href));
+  }
+  return flags;
+}
+
 function commsSendInstruction(input: { readonly context: OrchestrationCliContext }): string {
-  const devUrlPart = input.context.devUrl
-    ? ` --dev-url ${shellQuote(input.context.devUrl.href)}`
-    : "";
   return [
     cliCommandPrefix(),
     "--log-level error comms send",
     "<target-handle>",
     "'<message>'",
-    "--base-dir",
-    shellQuote(input.context.baseDir),
-    devUrlPart.trim(),
+    ...commsRuntimeFlags(input.context),
     "--type direct",
-  ]
-    .filter((part) => part.length > 0)
-    .join(" ");
+  ].join(" ");
+}
+
+function commsRegisterInstruction(input: {
+  readonly context: OrchestrationCliContext;
+  readonly handle: string;
+}): string {
+  return [
+    cliCommandPrefix(),
+    "--log-level error comms register",
+    shellQuote(input.handle),
+    "--thread",
+    `"$${T3_THREAD_ID_ENV}"`,
+    ...commsRuntimeFlags(input.context),
+  ].join(" ");
 }
 
 function withAgentCommsInstructions(input: {
@@ -215,8 +235,10 @@ function withAgentCommsInstructions(input: {
     `- Command template: ${commsSendInstruction({
       context: input.context,
     })}`,
+    "- Use that exact runtime template, including any --dev-url flag; do not replace it with a global/prod T3 command.",
+    "- If runtime env vars are available, T3_RUNTIME tells you prod/dev and T3_COMMS_FLAGS contains the ready-to-append comms flags.",
     `- The CLI autodetects you from ${T3_THREAD_ID_ENV}; do not include your own handle as a sender argument.`,
-    `- If autodetect fails, run: comms register ${input.handle} --thread "$${T3_THREAD_ID_ENV}", then retry the same target-only send command.`,
+    `- If autodetect fails, run: ${commsRegisterInstruction(input)}, then retry the same target-only send command.`,
     "- Handles are written without the @ in the command, for example: bob or joe.",
   ].join("\n");
 }
@@ -397,7 +419,7 @@ const agentSpawnCommand = Command.make("spawn", {
         yield* requireLiveServer(context.mode, "Agent spawn");
         const project = resolveProject(context.snapshot, flags.project);
         const createdAt = yield* nowIso;
-        const threadId = newThreadId();
+        const threadId = yield* newThreadId;
         const selection = modelSelection({
           provider: flags.provider,
           model: flags.model,
@@ -419,7 +441,7 @@ const agentSpawnCommand = Command.make("spawn", {
 
         yield* context.dispatch({
           type: "thread.create",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId,
           projectId: project.id,
           title: flags.name,
@@ -433,10 +455,10 @@ const agentSpawnCommand = Command.make("spawn", {
 
         yield* context.dispatch({
           type: "thread.turn.start",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId,
           message: {
-            messageId: newMessageId(),
+            messageId: yield* newMessageId,
             role: "user",
             text: initialMessage,
             attachments: [],
@@ -495,10 +517,10 @@ const agentSendCommand = Command.make("send", {
 
         yield* context.dispatch({
           type: "thread.turn.start",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId: thread.id,
           message: {
-            messageId: newMessageId(),
+            messageId: yield* newMessageId,
             role: "user",
             text: flags.message,
             attachments,
@@ -537,10 +559,10 @@ const agentPostCommand = Command.make("post", {
 
         yield* context.dispatch({
           type: "thread.message.import",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId: thread.id,
           message: {
-            messageId: newMessageId(),
+            messageId: yield* newMessageId,
             role: "assistant",
             text: flags.message,
             ...(attachments.length > 0 ? { attachments } : {}),
@@ -570,7 +592,7 @@ const agentStopCommand = Command.make("stop", {
         const thread = yield* resolveThread(context, flags.thread);
         yield* context.dispatch({
           type: "thread.session.stop",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId: thread.id,
           createdAt: yield* nowIso,
         });
@@ -595,7 +617,7 @@ const agentRenameCommand = Command.make("rename", {
         const thread = yield* resolveThread(context, flags.thread);
         yield* context.dispatch({
           type: "thread.meta.update",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId: thread.id,
           title: flags.title,
         });
@@ -624,7 +646,7 @@ const agentModelCommand = Command.make("model", {
         });
         yield* context.dispatch({
           type: "thread.meta.update",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId: thread.id,
           modelSelection: selection,
         });

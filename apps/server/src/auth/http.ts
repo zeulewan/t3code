@@ -210,6 +210,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
                     path: "/",
                     sameSite: "lax",
                   }),
+                  Effect.orDie,
                 ),
               );
             }

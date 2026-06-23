@@ -1584,13 +1584,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         const error = squashAtomCommandFailure(result);
         const message = error instanceof Error ? error.message : "Unknown error removing project.";
         if (message.includes("cannot be deleted without force=true")) {
-          const latestProjectThreads = selectSidebarThreadsForProjectRefs(useStore.getState(), [
-            memberProjectRef,
-          ]);
+          const latestProjectThreads = Array.from(sidebarThreadByKeyRef.current.values()).filter(
+            (thread) =>
+              thread.environmentId === memberProjectRef.environmentId &&
+              thread.projectId === memberProjectRef.projectId,
+          );
           const confirmedForce = await api.dialogs.confirm(
             [
-              `Remove project "${member.name}" and force-delete its thread history?`,
-              `Path: ${member.cwd}`,
+              `Remove project "${member.title}" and force-delete its thread history?`,
+              `Path: ${member.workspaceRoot}`,
               ...(member.environmentLabel ? [`Environment: ${member.environmentLabel}`] : []),
               latestProjectThreads.length > 0
                 ? `Detected ${latestProjectThreads.length} thread${
@@ -1603,26 +1605,26 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           if (!confirmedForce) {
             return;
           }
-          try {
-            await removeProject(member, { force: true });
-            return;
-          } catch (forceError) {
-            const forceMessage =
-              forceError instanceof Error ? forceError.message : "Unknown error removing project.";
-            console.error("Failed to force-remove project", {
-              projectId: member.id,
-              environmentId: member.environmentId,
-              error: forceError,
-            });
-            toastManager.add(
-              stackedThreadToast({
-                type: "error",
-                title: `Failed to remove "${member.name}"`,
-                description: forceMessage,
-              }),
-            );
+          const forceResult = await removeProject(member, { force: true });
+          if (forceResult._tag !== "Failure" || isAtomCommandInterrupted(forceResult)) {
             return;
           }
+          const forceError = squashAtomCommandFailure(forceResult);
+          const forceMessage =
+            forceError instanceof Error ? forceError.message : "Unknown error removing project.";
+          console.error("Failed to force-remove project", {
+            projectId: member.id,
+            environmentId: member.environmentId,
+            ...safeErrorLogAttributes(forceError),
+          });
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: `Failed to remove "${member.title}"`,
+              description: forceMessage,
+            }),
+          );
+          return;
         }
         console.error("Failed to remove project", {
           projectId: member.id,
@@ -2029,7 +2031,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const attemptArchiveThread = useCallback(
     async (threadRef: ScopedThreadRef) => {
       const result = await archiveThread(threadRef);
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      if (result && result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         toastManager.add(
           stackedThreadToast({

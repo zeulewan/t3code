@@ -14,10 +14,6 @@ export function resolveSessionCookieName(input: {
   readonly mode: "web" | "desktop";
   readonly port: number;
 }): string {
-  if (input.mode !== "desktop") {
-    return SESSION_COOKIE_NAME;
-  }
-
   return `${SESSION_COOKIE_NAME}_${input.port}`;
 }
 

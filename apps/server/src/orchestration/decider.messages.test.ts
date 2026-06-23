@@ -7,8 +7,10 @@ import {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { describe, expect, it } from "vitest";
+import { describe } from "vitest";
 
 import { decideOrchestrationCommand } from "./decider.ts";
 import { createEmptyReadModel, projectEvent } from "./projector.ts";
@@ -20,13 +22,13 @@ const asThreadId = (value: string): ThreadId => ThreadId.make(value);
 const asMessageId = (value: string): MessageId => MessageId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
 
-async function seedThreadReadModel() {
+function seedThreadReadModel() {
   const now = "2026-01-01T00:00:00.000Z";
   const projectId = asProjectId("project-messages");
   const threadId = asThreadId("thread-messages");
   const initial = createEmptyReadModel(now);
-  const withProject = await Effect.runPromise(
-    projectEvent(initial, {
+  return Effect.gen(function* () {
+    const withProject = yield* projectEvent(initial, {
       sequence: 1,
       eventId: asEventId("evt-project-messages"),
       aggregateKind: "project",
@@ -46,11 +48,9 @@ async function seedThreadReadModel() {
         createdAt: now,
         updatedAt: now,
       },
-    }),
-  );
+    });
 
-  return Effect.runPromise(
-    projectEvent(withProject, {
+    return yield* projectEvent(withProject, {
       sequence: 2,
       eventId: asEventId("evt-thread-messages"),
       aggregateKind: "thread",
@@ -76,45 +76,47 @@ async function seedThreadReadModel() {
         createdAt: now,
         updatedAt: now,
       },
-    }),
-  );
+    });
+  });
 }
 
 describe("decider message flows", () => {
-  it("emits a non-streaming message event for imported transcript messages", async () => {
-    const readModel = await seedThreadReadModel();
-    const createdAt = "2026-01-01T00:00:03.000Z";
+  it.layer(NodeServices.layer)("decider message flows", (it) => {
+    it.effect("emits a non-streaming message event for imported transcript messages", () =>
+      Effect.gen(function* () {
+        const readModel = yield* seedThreadReadModel();
+        const createdAt = "2026-01-01T00:00:03.000Z";
 
-    const result = await Effect.runPromise(
-      decideOrchestrationCommand({
-        command: {
-          type: "thread.message.import",
-          commandId: asCommandId("cmd-message-import"),
-          threadId: asThreadId("thread-messages"),
-          message: {
-            messageId: asMessageId("message-imported"),
-            role: "assistant",
-            text: "Imported assistant answer.",
-            turnId: asTurnId("turn-imported"),
+        const result = yield* decideOrchestrationCommand({
+          command: {
+            type: "thread.message.import",
+            commandId: asCommandId("cmd-message-import"),
+            threadId: asThreadId("thread-messages"),
+            message: {
+              messageId: asMessageId("message-imported"),
+              role: "assistant",
+              text: "Imported assistant answer.",
+              turnId: asTurnId("turn-imported"),
+              createdAt,
+            },
             createdAt,
           },
+          readModel,
+        });
+        const event = Array.isArray(result) ? result[0] : result;
+
+        expect(event.type).toBe("thread.message-sent");
+        expect(event.payload).toMatchObject({
+          threadId: asThreadId("thread-messages"),
+          messageId: asMessageId("message-imported"),
+          role: "assistant",
+          text: "Imported assistant answer.",
+          turnId: asTurnId("turn-imported"),
+          streaming: false,
           createdAt,
-        },
-        readModel,
+          updatedAt: createdAt,
+        });
       }),
     );
-    const event = Array.isArray(result) ? result[0] : result;
-
-    expect(event.type).toBe("thread.message-sent");
-    expect(event.payload).toMatchObject({
-      threadId: asThreadId("thread-messages"),
-      messageId: asMessageId("message-imported"),
-      role: "assistant",
-      text: "Imported assistant answer.",
-      turnId: asTurnId("turn-imported"),
-      streaming: false,
-      createdAt,
-      updatedAt: createdAt,
-    });
   });
 });

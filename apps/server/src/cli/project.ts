@@ -156,6 +156,32 @@ export class ProjectAlreadyExistsError extends Schema.TaggedErrorClass<ProjectAl
   }
 }
 
+export class ProjectAmbiguousTargetError extends Schema.TaggedErrorClass<ProjectAmbiguousTargetError>()(
+  "ProjectAmbiguousTargetError",
+  {
+    operation: Schema.Literal("resolveProjectTarget"),
+    identifier: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Multiple active projects are named '${this.identifier}'. Use a project id or workspace root.`;
+  }
+}
+
+export class ProjectWorkspaceAlreadyExistsError extends Schema.TaggedErrorClass<ProjectWorkspaceAlreadyExistsError>()(
+  "ProjectWorkspaceAlreadyExistsError",
+  {
+    operation: Schema.Literal("relocateProject"),
+    projectId: ProjectId,
+    workspaceRoot: Schema.String,
+    title: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `An active project already exists for '${this.workspaceRoot}' (${this.title}).`;
+  }
+}
+
 export const ProjectCommandError = Schema.Union([
   ProjectCommandIdGenerationError,
   ProjectLiveServerDeclaredResponseError,
@@ -165,6 +191,8 @@ export const ProjectCommandError = Schema.Union([
   ProjectIdentifierEmptyError,
   ProjectNotFoundError,
   ProjectAlreadyExistsError,
+  ProjectAmbiguousTargetError,
+  ProjectWorkspaceAlreadyExistsError,
 ]);
 export type ProjectCommandError = typeof ProjectCommandError.Type;
 
@@ -291,8 +319,9 @@ const findActiveProjectTarget = Effect.fn("findActiveProjectTarget")(function* (
 
   const exactTitleMatches = activeProjects.filter((project) => project.title === trimmedIdentifier);
   if (exactTitleMatches.length > 1) {
-    return yield* new ProjectCommandError({
-      message: `Multiple active projects are named '${trimmedIdentifier}'. Use a project id or workspace root.`,
+    return yield* new ProjectAmbiguousTargetError({
+      operation: "resolveProjectTarget",
+      identifier: trimmedIdentifier,
     });
   }
 
@@ -619,14 +648,17 @@ const projectRelocateCommand = Command.make("relocate", {
             candidate.workspaceRoot === nextWorkspaceRoot,
         );
         if (existingProject) {
-          return yield* new ProjectCommandError({
-            message: `An active project already exists for '${nextWorkspaceRoot}' (${existingProject.title}).`,
+          return yield* new ProjectWorkspaceAlreadyExistsError({
+            operation: "relocateProject",
+            projectId: existingProject.id,
+            workspaceRoot: nextWorkspaceRoot,
+            title: existingProject.title,
           });
         }
 
         yield* dispatch({
           type: "project.meta.update",
-          commandId: CommandId.make(crypto.randomUUID()),
+          commandId: CommandId.make(yield* projectCommandUuid),
           projectId: project.id,
           workspaceRoot: nextWorkspaceRoot,
         });

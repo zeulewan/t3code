@@ -185,7 +185,7 @@ export function useNewThreadHandler() {
               identity,
               threads: identityCandidates,
             }),
-        })
+          })
         : "New thread";
       return (async () => {
         setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {

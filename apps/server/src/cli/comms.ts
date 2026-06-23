@@ -14,6 +14,8 @@ import {
   type OrchestrationReadModel,
   type OrchestrationThread,
 } from "@t3tools/contracts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -86,8 +88,12 @@ const limitFlag = Flag.integer("limit").pipe(
 );
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-const newCommandId = () => CommandId.make(crypto.randomUUID());
-const newMessageId = () => MessageId.make(crypto.randomUUID());
+const randomUuid = Crypto.Crypto.pipe(
+  Effect.flatMap((crypto) => crypto.randomUUIDv4),
+  Effect.provide(NodeServices.layer),
+);
+const newCommandId = randomUuid.pipe(Effect.map(CommandId.make));
+const newMessageId = randomUuid.pipe(Effect.map(MessageId.make));
 
 function resolveThread(snapshot: OrchestrationReadModel, identifier: string): OrchestrationThread {
   const trimmed = identifier.trim();
@@ -328,10 +334,10 @@ const echoToSenderThread = (
     const createdAt = yield* nowIso;
     yield* context.dispatch({
       type: "thread.message.import",
-      commandId: newCommandId(),
+      commandId: yield* newCommandId,
       threadId: input.sender.threadId,
       message: {
-        messageId: newMessageId(),
+        messageId: yield* newMessageId,
         role: "assistant",
         text: senderEchoPrompt(input),
         turnId: null,
@@ -391,10 +397,10 @@ const deliverToThreads = (
       const result = yield* Effect.exit(
         context.dispatch({
           type: "thread.turn.start",
-          commandId: newCommandId(),
+          commandId: yield* newCommandId,
           threadId,
           message: {
-            messageId: newMessageId(),
+            messageId: yield* newMessageId,
             role: "user",
             text: deliveryPrompt({
               sender: input.sender,

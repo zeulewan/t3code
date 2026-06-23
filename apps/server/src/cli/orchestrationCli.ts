@@ -1,4 +1,7 @@
 import {
+  AuthAdministrativeScopes,
+  EnvironmentHttpApi,
+  EnvironmentHttpCommonError,
   ClientOrchestrationCommand,
   type OrchestrationCommand,
   OrchestrationReadModel,
@@ -12,16 +15,10 @@ import * as Option from "effect/Option";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import { GlobalFlag } from "effect/unstable/cli";
-import {
-  FetchHttpClient,
-  HttpClient,
-  HttpClientRequest,
-  HttpClientResponse,
-} from "effect/unstable/http";
+import { FetchHttpClient, HttpClient, HttpClientError } from "effect/unstable/http";
+import * as HttpApiClient from "effect/unstable/httpapi/HttpApiClient";
 
-import { AuthControlPlaneRuntimeLive } from "../auth/Layers/AuthControlPlane.ts";
-import { AuthControlPlane } from "../auth/Services/AuthControlPlane.ts";
-import type { AuthControlPlaneShape } from "../auth/Services/AuthControlPlane.ts";
+import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import { ServerConfig } from "../config.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -29,13 +26,13 @@ import { OrchestrationLayerLive } from "../orchestration/runtimeLayer.ts";
 import { CommsRepositoryLive } from "../persistence/Layers/Comms.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "../persistence/Layers/Sqlite.ts";
 import { CommsRepository, type CommsRepositoryShape } from "../persistence/Services/Comms.ts";
-import { RepositoryIdentityResolverLive } from "../project/Layers/RepositoryIdentityResolver.ts";
+import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
 import {
   clearPersistedServerRuntimeState,
   isPersistedServerRuntimeStateProcessAlive,
   readPersistedServerRuntimeState,
 } from "../serverRuntimeState.ts";
-import { WorkspacePathsLive } from "../workspace/Layers/WorkspacePaths.ts";
+import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { type CliAuthLocationFlags, resolveCliAuthConfig } from "./config.ts";
 
 export type OrchestrationCliMode = "live" | "offline";
@@ -57,94 +54,76 @@ export interface OrchestrationCliContext {
 
 const OrchestrationCliRuntimeLive = Layer.mergeAll(
   CommsRepositoryLive,
-  OrchestrationLayerLive.pipe(Layer.provideMerge(RepositoryIdentityResolverLive)),
+  OrchestrationLayerLive.pipe(Layer.provideMerge(RepositoryIdentityResolver.layer)),
 ).pipe(Layer.provideMerge(SqlitePersistenceLayerLive));
 
-const OrchestrationHttpErrorResponse = Schema.Struct({
-  error: Schema.String,
-});
+const isEnvironmentHttpCommonError = Schema.is(EnvironmentHttpCommonError);
 
-const decodeOrchestrationReadModelResponse = (response: HttpClientResponse.HttpClientResponse) =>
-  HttpClientResponse.schemaBodyJson(OrchestrationReadModel)(response);
+function orchestrationCliErrorFromLiveServerRequest(cause: unknown): OrchestrationCliError {
+  if (isEnvironmentHttpCommonError(cause)) {
+    const reason = "reason" in cause ? `/${cause.reason}` : "";
+    return new OrchestrationCliError({
+      message: `Server request failed (${cause.code}${reason}, trace ${cause.traceId}).`,
+    });
+  }
+  if (HttpClientError.isHttpClientError(cause) && cause.response !== undefined) {
+    return new OrchestrationCliError({
+      message: `Server request failed with undeclared status ${cause.response.status}.`,
+    });
+  }
+  return new OrchestrationCliError({
+    message: "Failed to call the running server.",
+  });
+}
 
-const decodeDispatchResultResponse = (response: HttpClientResponse.HttpClientResponse) =>
-  HttpClientResponse.schemaBodyJson(Schema.Struct({ sequence: Schema.Number }))(response);
-
-const readErrorMessageFromResponse = (response: HttpClientResponse.HttpClientResponse) =>
-  HttpClientResponse.schemaBodyJson(OrchestrationHttpErrorResponse)(response).pipe(
-    Effect.map((body) => body.error),
-    Effect.catch(() => Effect.succeed(null)),
-    Effect.map((body) => {
-      if (typeof body === "string" && body.trim().length > 0) {
-        return body;
-      }
-      return `Server request failed with status ${response.status}.`;
-    }),
-  );
-
-const runLiveServerRequest = <A, E extends Error, R>(
-  request: HttpClientRequest.HttpClientRequest,
-  handle: (response: HttpClientResponse.HttpClientResponse) => Effect.Effect<A, E, R>,
-) =>
-  Effect.gen(function* () {
-    const httpClient = yield* HttpClient.HttpClient;
-    const response = yield* httpClient.execute(request);
-    return yield* handle(response);
+const makeLiveServerClient = (origin: string) =>
+  HttpApiClient.make(EnvironmentHttpApi, {
+    baseUrl: origin,
   });
 
 const withCliSessionToken = <A, E, R>(
-  authControlPlane: AuthControlPlaneShape,
+  environmentAuth: EnvironmentAuth.EnvironmentAuth["Service"],
   run: (token: string) => Effect.Effect<A, E, R>,
 ) =>
   Effect.acquireUseRelease(
-    authControlPlane.issueSession({
-      role: "owner",
+    environmentAuth.issueSession({
+      scopes: AuthAdministrativeScopes,
       label: "t3 cli",
     }),
     (issued) => run(issued.token),
-    (issued) => authControlPlane.revokeSession(issued.sessionId).pipe(Effect.ignore({ log: true })),
+    (issued) => environmentAuth.revokeSession(issued.sessionId).pipe(Effect.ignore({ log: true })),
   );
 
 const fetchLiveOrchestrationSnapshot = (origin: string, bearerToken: string) =>
-  runLiveServerRequest(
-    HttpClientRequest.get(`${origin}/api/orchestration/snapshot`).pipe(
-      HttpClientRequest.acceptJson,
-      HttpClientRequest.bearerToken(bearerToken),
-    ),
-    HttpClientResponse.matchStatus({
-      "2xx": decodeOrchestrationReadModelResponse,
-      orElse: (failedResponse) =>
-        readErrorMessageFromResponse(failedResponse).pipe(
-          Effect.flatMap((message) => Effect.fail(new OrchestrationCliError({ message }))),
-        ),
-    }),
-  );
+  Effect.gen(function* () {
+    const client = yield* makeLiveServerClient(origin);
+    return yield* client.orchestration.snapshot({
+      headers: { authorization: `Bearer ${bearerToken}` },
+    });
+  }).pipe(Effect.mapError(orchestrationCliErrorFromLiveServerRequest));
 
 const dispatchLiveOrchestrationCommand = (
   origin: string,
   bearerToken: string,
   command: ClientOrchestrationCommand,
 ) =>
-  HttpClientRequest.post(`${origin}/api/orchestration/dispatch`).pipe(
-    HttpClientRequest.acceptJson,
-    HttpClientRequest.bearerToken(bearerToken),
-    HttpClientRequest.bodyJson(command),
-    Effect.flatMap((request) =>
-      runLiveServerRequest(
-        request,
-        HttpClientResponse.matchStatus({
-          "2xx": decodeDispatchResultResponse,
-          orElse: (failedResponse) =>
-            readErrorMessageFromResponse(failedResponse).pipe(
-              Effect.flatMap((message) => Effect.fail(new OrchestrationCliError({ message }))),
-            ),
-        }),
-      ),
-    ),
+  Effect.gen(function* () {
+    const client = yield* makeLiveServerClient(origin);
+    return yield* client.orchestration.dispatch({
+      headers: { authorization: `Bearer ${bearerToken}` },
+      payload: command,
+    } as Parameters<typeof client.orchestration.dispatch>[0]);
+  }).pipe(
+    Effect.mapError((cause) => {
+      const error = orchestrationCliErrorFromLiveServerRequest(cause);
+      return new OrchestrationCliError({
+        message: `${error.message} while dispatching ${command.type}.`,
+      });
+    }),
   );
 
 const tryResolveLiveServer = (
-  authControlPlane: AuthControlPlaneShape,
+  environmentAuth: EnvironmentAuth.EnvironmentAuth["Service"],
   serverRuntimeStatePath: string,
 ) =>
   Effect.gen(function* () {
@@ -153,7 +132,7 @@ const tryResolveLiveServer = (
       return Option.none<{ readonly origin: string }>();
     }
 
-    const attempt = withCliSessionToken(authControlPlane, (token) =>
+    const attempt = withCliSessionToken(environmentAuth, (token) =>
       fetchLiveOrchestrationSnapshot(runtimeState.value.origin, token).pipe(
         Effect.as({
           origin: runtimeState.value.origin,
@@ -183,9 +162,9 @@ export const runWithOrchestrationCli = (
     const minimumLogLevel = config.logLevel;
 
     const runtimeLayer = Layer.mergeAll(
-      AuthControlPlaneRuntimeLive,
+      EnvironmentAuth.runtimeLayer,
       OrchestrationCliRuntimeLive,
-      WorkspacePathsLive,
+      WorkspacePaths.layer,
       FetchHttpClient.layer,
     ).pipe(
       Layer.provide(Layer.succeed(ServerConfig, config)),
@@ -193,13 +172,13 @@ export const runWithOrchestrationCli = (
     );
 
     return yield* Effect.gen(function* () {
-      const authControlPlane = yield* AuthControlPlane;
+      const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const commsRepository = yield* CommsRepository;
-      const liveMode = yield* tryResolveLiveServer(authControlPlane, config.serverRuntimeStatePath);
+      const liveMode = yield* tryResolveLiveServer(environmentAuth, config.serverRuntimeStatePath);
 
       if (Option.isSome(liveMode)) {
         const httpClient = yield* HttpClient.HttpClient;
-        return yield* withCliSessionToken(authControlPlane, (token) =>
+        return yield* withCliSessionToken(environmentAuth, (token) =>
           Effect.gen(function* () {
             const snapshot = yield* fetchLiveOrchestrationSnapshot(liveMode.value.origin, token);
             const output = yield* run({

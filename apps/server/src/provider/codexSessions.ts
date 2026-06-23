@@ -12,13 +12,17 @@ import {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { getModelSelectionBooleanOptionValue } from "@t3tools/shared/model";
+import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as Cause from "effect/Cause";
+import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import * as CodexClient from "effect-codex-app-server/client";
 import type * as CodexSchema from "effect-codex-app-server/schema";
 
@@ -37,8 +41,13 @@ const DEFAULT_CODEX_INSTANCE = ProviderInstanceId.make("codex");
 const DEFAULT_LIMIT = 40;
 const MAX_LIMIT = 100;
 const decodeCodexSettings = Schema.decodeUnknownEffect(CodexSettingsSchema);
+const randomUuid = Crypto.Crypto.pipe(
+  Effect.flatMap((crypto) => crypto.randomUUIDv4),
+  Effect.mapError((cause) => toCodexSessionError("Generate Codex import id", cause)),
+  Effect.provide(NodeServices.layer),
+);
 
-type CodexClientShape = CodexClient.CodexAppServerClientShape;
+type CodexClientShape = CodexClient.CodexAppServerClient["Service"];
 type CodexThreadListItem = CodexSchema.V2ThreadListResponse["data"][number];
 type CodexThreadRead = CodexSchema.V2ThreadReadResponse["thread"];
 type CodexThreadItem = CodexThreadRead["turns"][number]["items"][number];
@@ -246,17 +255,32 @@ const withCodexClient = <A, E, R>(
         effectiveSettings.homePath.trim().length > 0
           ? expandHomePath(effectiveSettings.homePath)
           : undefined;
-      const clientContext = yield* Layer.build(
-        CodexClient.layerCommand({
-          command: effectiveSettings.binaryPath,
-          args: ["app-server"],
-          cwd,
-          env: {
-            ...instance.environment,
-            ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
-          },
-        }),
-      ).pipe(Effect.mapError((cause) => toCodexSessionError("Start Codex app-server", cause)));
+      const env = {
+        ...instance.environment,
+        ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
+      };
+      const spawnCommand = yield* resolveSpawnCommand(
+        effectiveSettings.binaryPath,
+        ["app-server"],
+        {
+          env,
+          extendEnv: true,
+        },
+      ).pipe(Effect.mapError((cause) => toCodexSessionError("Resolve Codex command", cause)));
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const child = yield* spawner
+        .spawn(
+          ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+            cwd,
+            env,
+            extendEnv: true,
+            shell: spawnCommand.shell,
+          }),
+        )
+        .pipe(Effect.mapError((cause) => toCodexSessionError("Start Codex app-server", cause)));
+      const clientContext = yield* Layer.build(CodexClient.layerChildProcess(child)).pipe(
+        Effect.mapError((cause) => toCodexSessionError("Start Codex app-server", cause)),
+      );
       const client = yield* Effect.service(CodexClient.CodexAppServerClient).pipe(
         Effect.provide(clientContext),
       );
@@ -272,7 +296,7 @@ const withCodexClient = <A, E, R>(
         );
       return yield* run(client, effectiveSettings);
     }),
-  );
+  ).pipe(Effect.provide(NodeServices.layer));
 
 export const listCodexSessions = Effect.fn("listCodexSessions")(function* (
   input: CodexSessionListInput,
@@ -361,16 +385,17 @@ export const importCodexSession = Effect.fn("importCodexSession")(function* (
   const orchestration = yield* OrchestrationEngineService;
   const providerService = yield* ProviderService;
   const thread = imported.readResponse.thread;
-  const threadId = ThreadId.make(crypto.randomUUID());
-  const importId = crypto.randomUUID();
+  const threadId = ThreadId.make(yield* randomUuid);
+  const importId = yield* randomUuid;
   const now = DateTime.formatIso(yield* DateTime.now);
   const createdAt = unixSecondsToIso(thread.createdAt, now);
   const title = imported.title;
+  const createThreadCommandId = CommandId.make(`codex-import-thread:${yield* randomUuid}`);
 
   yield* orchestration
     .dispatch({
       type: "thread.create",
-      commandId: CommandId.make(`codex-import-thread:${crypto.randomUUID()}`),
+      commandId: createThreadCommandId,
       threadId,
       projectId: input.projectId,
       title,
@@ -385,10 +410,11 @@ export const importCodexSession = Effect.fn("importCodexSession")(function* (
 
   const importedMessages = importedMessagesFromCodexThread(thread, now);
   for (const [index, message] of importedMessages.entries()) {
+    const importMessageCommandId = CommandId.make(`codex-import-message:${yield* randomUuid}`);
     yield* orchestration
       .dispatch({
         type: "thread.message.import",
-        commandId: CommandId.make(`codex-import-message:${crypto.randomUUID()}`),
+        commandId: importMessageCommandId,
         threadId,
         message: {
           messageId: MessageId.make(`codex-import:${importId}:${index}`),
@@ -415,10 +441,11 @@ export const importCodexSession = Effect.fn("importCodexSession")(function* (
     })
     .pipe(Effect.mapError((cause) => toCodexSessionError("Resume Codex session", cause)));
   const sessionUpdatedAt = DateTime.formatIso(yield* DateTime.now);
+  const setSessionCommandId = CommandId.make(`codex-import-session:${yield* randomUuid}`);
   yield* orchestration
     .dispatch({
       type: "thread.session.set",
-      commandId: CommandId.make(`codex-import-session:${crypto.randomUUID()}`),
+      commandId: setSessionCommandId,
       threadId,
       session: {
         threadId,

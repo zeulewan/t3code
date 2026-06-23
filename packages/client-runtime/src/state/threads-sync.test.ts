@@ -1,4 +1,5 @@
 import {
+  DEFAULT_THREAD_IDENTITY,
   EnvironmentId,
   EventId,
   ORCHESTRATION_WS_METHODS,
@@ -44,6 +45,7 @@ const BASE_THREAD: OrchestrationThread = {
   id: THREAD_ID,
   projectId: ProjectId.make("project-1"),
   title: "Cached thread",
+  identity: DEFAULT_THREAD_IDENTITY,
   modelSelection: {
     instanceId: ProviderInstanceId.make("codex"),
     model: "gpt-5.4",
