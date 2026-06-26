@@ -89,6 +89,7 @@ import {
   makePersistedServerRuntimeState,
   persistServerRuntimeState,
 } from "./serverRuntimeState.ts";
+import { installNodeWebSocketHeartbeat } from "./websocketHeartbeat.ts";
 import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
 import * as NetService from "@t3tools/shared/Net";
 import * as RelayClient from "@t3tools/shared/relayClient";
@@ -132,10 +133,12 @@ const HttpServerLive = Layer.unwrap(
         gracefulShutdownTimeout: HTTP_PREEMPTIVE_SHUTDOWN_GRACE_MS,
       });
     } else {
-      const [NodeHttpServer, NodeHttp] = yield* Effect.all([
+      const [NodeHttpServer, NodeHttp, NodeSocket] = yield* Effect.all([
         Effect.promise(() => import("@effect/platform-node/NodeHttpServer")),
         Effect.promise(() => import("node:http")),
+        Effect.promise(() => import("@effect/platform-node-shared/NodeSocket")),
       ]);
+      installNodeWebSocketHeartbeat(NodeSocket.NodeWS);
       return NodeHttpServer.layer(NodeHttp.createServer, {
         host: config.host ?? "127.0.0.1",
         port: config.port,
