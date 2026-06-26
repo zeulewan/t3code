@@ -6,6 +6,7 @@ import * as NodePath from "node:path";
 import {
   ApprovalRequestId,
   CodexSettings,
+  EnvironmentId,
   EventId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -45,6 +46,7 @@ import {
   T3_THREAD_ID_ENV,
 } from "../../commsEnvironment.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import { ProviderAdapterValidationError } from "../Errors.ts";
 import type { CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
@@ -328,6 +330,45 @@ validationLayer("CodexAdapterLive validation", (it) => {
       NodeAssert.match(runtimeOptions?.environment?.[T3_COMMS_FLAGS_ENV] ?? "", /--base-dir '/);
     }),
   );
+
+  it.effect("preserves comms environment when adding MCP session config", () => {
+    const threadId = asThreadId("thread-mcp-env");
+    return Effect.gen(function* () {
+      validationRuntimeFactory.factory.mockClear();
+      yield* Effect.sync(() =>
+        McpProviderSession.setMcpProviderSession({
+          environmentId: EnvironmentId.make("environment-mcp-env"),
+          threadId,
+          providerSessionId: "provider-session-mcp-env",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          endpoint: "http://127.0.0.1:41234/mcp",
+          authorizationHeader: "Bearer test-mcp-token",
+        }),
+      );
+
+      const adapter = yield* CodexAdapter;
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("codex"),
+        threadId,
+        title: "Joe",
+        runtimeMode: "full-access",
+      });
+
+      const runtimeOptions = validationRuntimeFactory.factory.mock.calls[0]?.[0];
+      NodeAssert.equal(runtimeOptions?.environment?.[T3_THREAD_ID_ENV], "thread-mcp-env");
+      NodeAssert.equal(runtimeOptions?.environment?.[T3_RUNTIME_ENV], "prod");
+      NodeAssert.match(runtimeOptions?.environment?.[T3_COMMS_FLAGS_ENV] ?? "", /--base-dir '/);
+      NodeAssert.equal(runtimeOptions?.environment?.T3_MCP_BEARER_TOKEN, "test-mcp-token");
+      NodeAssert.deepStrictEqual(runtimeOptions?.appServerArgs, [
+        "-c",
+        "mcp_servers.t3-code.url=http://127.0.0.1:41234/mcp",
+        "-c",
+        'mcp_servers.t3-code.bearer_token_env_var="T3_MCP_BEARER_TOKEN"',
+      ]);
+    }).pipe(
+      Effect.ensuring(Effect.sync(() => McpProviderSession.clearMcpProviderSession(threadId))),
+    );
+  });
 });
 
 const sessionRuntimeFactory = makeRuntimeFactory();

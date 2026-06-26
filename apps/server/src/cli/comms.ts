@@ -223,13 +223,22 @@ const getActorByThreadId = (context: OrchestrationCliContext, rawThreadId: strin
   });
 
 const detectSenderActor = (context: OrchestrationCliContext) =>
+  Effect.map(detectSenderActorWithSource(context), ({ actor }) => actor);
+
+const detectSenderActorWithSource = (context: OrchestrationCliContext) =>
   Effect.gen(function* () {
     const detected = readAutoCommsSenderEnv();
     if (detected.threadId) {
-      return yield* getActorByThreadId(context, detected.threadId);
+      return {
+        actor: yield* getActorByThreadId(context, detected.threadId),
+        source: T3_THREAD_ID_ENV,
+      };
     }
     if (detected.handle) {
-      return yield* getActorByHandle(context, detected.handle.replace(/^@/, ""));
+      return {
+        actor: yield* getActorByHandle(context, detected.handle.replace(/^@/, "")),
+        source: detected.handleSource ?? T3_COMMS_HANDLE_ENV,
+      };
     }
     return yield* new OrchestrationCliError({
       message: `Cannot autodetect comms sender. Run this from an agent session with ${T3_THREAD_ID_ENV} set, set ${T3_COMMS_HANDLE_ENV}, or use the developer override: comms send --from <handle> --developer-override <target-handle> '<message>'.`,
@@ -284,6 +293,19 @@ function formatInbox(items: ReadonlyArray<CommsMessageWithDelivery>): string {
     );
   }
   return lines.join("\n");
+}
+
+function formatWhoami(input: { readonly actor: CommsActor; readonly source: string }): string {
+  return [
+    "HANDLE\tKIND\tTHREAD\tPROJECT\tSOURCE",
+    [
+      `@${input.actor.handle}`,
+      input.actor.kind,
+      input.actor.threadId ?? "",
+      input.actor.projectId ?? "",
+      input.source,
+    ].join("\t"),
+  ].join("\n");
 }
 
 function deliveryPrompt(input: {
@@ -494,6 +516,17 @@ const commsActorsCommand = Command.make("actors", {
   ),
 );
 
+const commsWhoamiCommand = Command.make("whoami", {
+  ...projectLocationFlags,
+}).pipe(
+  Command.withDescription("Show the comms actor autodetected from this process environment."),
+  Command.withHandler((flags) =>
+    runWithOrchestrationCli(flags, (context: OrchestrationCliContext) =>
+      Effect.map(detectSenderActorWithSource(context), formatWhoami),
+    ),
+  ),
+);
+
 const commsSendCommand = Command.make("send", {
   ...projectLocationFlags,
   args: Argument.string("target-message").pipe(
@@ -631,6 +664,7 @@ export const commsCommand = Command.make("comms").pipe(
   Command.withSubcommands([
     commsRegisterCommand,
     commsActorsCommand,
+    commsWhoamiCommand,
     commsSendCommand,
     commsInboxCommand,
   ]),

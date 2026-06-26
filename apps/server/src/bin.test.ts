@@ -1076,4 +1076,26 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
       assert.isTrue(inboxOutput.output.includes("hello via autodetected handle"));
     }),
   );
+
+  it.effect("reports the autodetected comms sender with whoami", () =>
+    Effect.gen(function* () {
+      const baseDir = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "t3-cli-comms-whoami-test-"),
+      );
+
+      yield* runCliWithRuntime(["comms", "register", "sender", "--base-dir", baseDir]);
+
+      const whoamiOutput = yield* withRemovedProcessEnv(
+        [T3_THREAD_ID_ENV],
+        withProcessEnv(
+          T3_COMMS_HANDLE_ENV,
+          "sender",
+          captureStdout(runCli(["comms", "whoami", "--base-dir", baseDir])),
+        ),
+      );
+
+      assert.isTrue(whoamiOutput.output.includes("@sender"));
+      assert.isTrue(whoamiOutput.output.includes(T3_COMMS_HANDLE_ENV));
+    }),
+  );
 });
