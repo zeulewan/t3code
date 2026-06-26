@@ -31,6 +31,7 @@ import * as ConnectionWakeups from "./wakeups.ts";
 
 const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000] as const;
 const CONNECTION_ESTABLISHMENT_TIMEOUT = "15 seconds";
+const CONNECTION_KEEPALIVE_INTERVAL = "10 seconds";
 const CONNECTION_PROBE_TIMEOUT = "15 seconds";
 const BACKOFF_RESET_AFTER_MS = 30_000;
 
@@ -84,6 +85,10 @@ type EstablishmentEvent =
     }
   | { readonly _tag: "Interrupted" }
   | { readonly _tag: "TimedOut" };
+
+type ConnectedLeaseEvent =
+  | { readonly _tag: "Signal"; readonly signal: SupervisorSignal }
+  | { readonly _tag: "KeepaliveDue" };
 
 function exitUnlessInterrupted<A, E, R>(
   effect: Effect.Effect<A, E, R>,
@@ -383,67 +388,88 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     }
   });
 
+  const runTimedProbe = Effect.fnUntraced(function* (
+    lease: ConnectionDriver.EnvironmentConnectionLease,
+  ) {
+    const probe = yield* lease.session.probe.pipe(
+      Effect.timeoutOrElse({
+        duration: CONNECTION_PROBE_TIMEOUT,
+        orElse: () =>
+          Effect.fail(
+            new ConnectionTransientError({
+              reason: "timeout",
+              detail: `${target.label} did not respond to a connection health check.`,
+            }),
+          ),
+      }),
+      Effect.forkChild,
+    );
+    for (;;) {
+      const probeEvent = yield* Effect.raceFirst(
+        Fiber.await(probe).pipe(Effect.map((exit) => ({ _tag: "ProbeCompleted" as const, exit }))),
+        Queue.take(signals).pipe(Effect.map((signal) => ({ _tag: "Signal" as const, signal }))),
+      );
+      if (probeEvent._tag === "ProbeCompleted") {
+        yield* probeEvent.exit;
+        return true;
+      }
+      switch (probeEvent.signal._tag) {
+        case "DisconnectRequested":
+        case "RetryRequested":
+          yield* Fiber.interrupt(probe);
+          return false;
+        case "NetworkChanged":
+          if (probeEvent.signal.network === "offline") {
+            yield* Fiber.interrupt(probe);
+            return false;
+          }
+          break;
+        case "ConnectRequested":
+        case "Wakeup":
+          break;
+      }
+    }
+  });
+
   const monitorConnectedLease = Effect.fnUntraced(function* (
     lease: ConnectionDriver.EnvironmentConnectionLease,
   ) {
     for (;;) {
-      const next = yield* Queue.take(signals);
-      switch (next._tag) {
+      const next = yield* Effect.raceFirst(
+        Queue.take(signals).pipe(
+          Effect.map((signal): ConnectedLeaseEvent => ({ _tag: "Signal", signal })),
+        ),
+        Effect.sleep(CONNECTION_KEEPALIVE_INTERVAL).pipe(
+          Effect.as<ConnectedLeaseEvent>({ _tag: "KeepaliveDue" }),
+        ),
+      );
+      if (next._tag === "KeepaliveDue") {
+        const keepMonitoring = yield* runTimedProbe(lease);
+        if (!keepMonitoring) {
+          return;
+        }
+        continue;
+      }
+
+      const signal = next.signal;
+      switch (signal._tag) {
         case "DisconnectRequested":
         case "RetryRequested":
           return;
         case "NetworkChanged":
-          if (next.network === "offline") {
+          if (signal.network === "offline") {
             return;
           }
           break;
         case "Wakeup":
-          if (next.reason === "credentials-changed" && target._tag === "RelayConnectionTarget") {
+          if (signal.reason === "credentials-changed" && target._tag === "RelayConnectionTarget") {
             yield* logManagedRelayAccountChange;
             return;
           }
-          if (next.reason === "application-active") {
-            const probe = yield* lease.session.probe.pipe(
-              Effect.timeoutOrElse({
-                duration: CONNECTION_PROBE_TIMEOUT,
-                orElse: () =>
-                  Effect.fail(
-                    new ConnectionTransientError({
-                      reason: "timeout",
-                      detail: `${target.label} did not respond to a connection health check.`,
-                    }),
-                  ),
-              }),
-              Effect.forkChild,
-            );
-            for (;;) {
-              const probeEvent = yield* Effect.raceFirst(
-                Fiber.await(probe).pipe(
-                  Effect.map((exit) => ({ _tag: "ProbeCompleted" as const, exit })),
-                ),
-                Queue.take(signals).pipe(
-                  Effect.map((signal) => ({ _tag: "Signal" as const, signal })),
-                ),
-              );
-              if (probeEvent._tag === "ProbeCompleted") {
-                yield* probeEvent.exit;
-                break;
-              }
-              switch (probeEvent.signal._tag) {
-                case "DisconnectRequested":
-                case "RetryRequested":
-                  yield* Fiber.interrupt(probe);
-                  return;
-                case "NetworkChanged":
-                  if (probeEvent.signal.network === "offline") {
-                    yield* Fiber.interrupt(probe);
-                    return;
-                  }
-                  break;
-                case "ConnectRequested":
-                case "Wakeup":
-                  break;
-              }
+          if (signal.reason === "application-active") {
+            const keepMonitoring = yield* runTimedProbe(lease);
+            if (!keepMonitoring) {
+              return;
             }
           }
           break;

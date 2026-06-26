@@ -677,6 +677,57 @@ describe("EnvironmentSupervisor", () => {
     }),
   );
 
+  it.effect("probes connected sessions periodically to keep the websocket warm", () =>
+    Effect.gen(function* () {
+      const probeCount = yield* Ref.make(0);
+      const probeCalled = yield* Deferred.make<void>();
+      const harness = yield* makeHarness({
+        probe: () =>
+          Ref.updateAndGet(probeCount, (count) => count + 1).pipe(
+            Effect.flatMap((count) =>
+              count === 1 ? Deferred.succeed(probeCalled, undefined) : Effect.void,
+            ),
+          ),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      yield* TestClock.adjust("10 seconds");
+      yield* Deferred.await(probeCalled);
+
+      expect(yield* Ref.get(probeCount)).toBe(1);
+      expect(yield* Ref.get(harness.sessionCount)).toBe(1);
+      expect(yield* Ref.get(harness.releaseCount)).toBe(0);
+      expect((yield* SubscriptionRef.get(supervisor.state)).phase).toBe("connected");
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("reconnects when a periodic liveness probe fails", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        probe: (attempt) =>
+          attempt === 1 ? Effect.fail(transient("The live session is stale.")) : Effect.void,
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      yield* TestClock.adjust("10 seconds");
+      yield* awaitState(supervisor.state, (state) => state.phase === "backoff");
+      yield* TestClock.adjust("1 second");
+      yield* eventuallyState(
+        supervisor.state,
+        (state) => state.phase === "connected" && state.generation === 2,
+      );
+
+      expect(yield* Ref.get(harness.sessionCount)).toBe(2);
+      expect(yield* Ref.get(harness.releaseCount)).toBe(1);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("reconnects when the foreground liveness probe fails", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({
